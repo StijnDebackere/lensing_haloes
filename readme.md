@@ -1,7 +1,7 @@
 # Introduction
-The `lensing_haloes` module provides all the ingredients to reproduce the results from (arXiv:2101.07800)[https://arxiv.org/abs/2101.07800].
+The `lensing_haloes` module provides all the ingredients to reproduce the results from [arXiv:2101.07800](https://arxiv.org/abs/2101.07800).
 
-Downloading the cluster samples from (Zenodo)[https://zenodo.org] is
+Downloading the cluster samples from [Zenodo](https://zenodo.org) is
 the fastest way to have a look at the data. There you can find the
 generated cluster samples for both stage III and stage IV-like surveys
 and their best-fitting cosmologies.
