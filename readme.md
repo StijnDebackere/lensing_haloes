@@ -6,6 +6,17 @@ the fastest way to have a look at the data. There you can find the
 generated cluster samples for both stage III and stage IV-like surveys
 and their best-fitting cosmologies.
 
+## Installation
+In the desired location, type
+```
+git clone https://github.com/StijnDebackere/lensing_haloes
+cd lensing_haloes
+pip install .
+```
+
+This should automatically install all requirements for the package to
+work.
+
 ## Quickstart
 
 If you want to generate data yourself, you should start by running

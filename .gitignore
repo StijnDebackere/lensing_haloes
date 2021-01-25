@@ -8,3 +8,4 @@ __pychache__/
 **/.ipynb_checkpoints/
 *-checkpoint.ipynb
 *.pyc
+*_fgas_r*
