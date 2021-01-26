@@ -1375,19 +1375,17 @@ def plot_cosmological_contours(
     results = dict((m, {}) for m in methods)
     with asdf.open(fname, copy_arrays=True, lazy_load=False) as af:
         A_add = tools.num_to_str(af['A_survey'], unit='k', precision=1)
-        zmin_add = tools.num_to_str(af[methods[0]][mcut]['z_min'], precision=2)
-        zmax_add = tools.num_to_str(af[methods[0]][mcut]['z_max'], precision=2)
         mcut_add = tools.num_to_str(mcut, precision=2)
         means = np.array([af['omega_m'], af['sigma_8'], af['w0']])
         means = sigma_8_to_S8(means, alpha=alpha)
         for method in methods:
-            m = af[method][mcut]['maps']
+            m = af[method][mcut][res]['maps']
             if S8:
                 m = sigma_8_to_S8(m, alpha=alpha)
             if relative:
                 m = abs_to_rel(m, means)
             results[method]['maps'] = m
-            results[method]['loglikes'] = af[method][mcut]['fun']
+            results[method]['loglikes'] = af[method][mcut][res]['fun']
 
     if S8:
         s8_label = '\Delta S_8 / S_8'
@@ -1545,7 +1543,7 @@ def plot_cosmological_contours(
 
     fname = (
         f'fit_om_{s8_add}_w0_{rel_add}_Asurvey_{A_add}deg2'
-        f'_z_{zmin_add}_{zmax_add}_m200m_min_{mcut_add}'
+        f'_m200m_min_{mcut_add}'
     )
     plt.savefig(
         f'{PAPER_DIR}/{fname}.pdf', transparent=True
@@ -1707,20 +1705,19 @@ def plot_cosmological_1d_mcuts(
         },
     }
 
+    methods = [method for method in methods if method in methods_info.keys()]
     results = dict((m, {mcut: {} for mcut in mcuts}) for m in methods)
     with asdf.open(fname, copy_arrays=True, lazy_load=False) as af:
         A_add = tools.num_to_str(af['A_survey'], unit='k', precision=1)
-        zmin_add = tools.num_to_str(af[methods[0]][mcuts[0]]['z_min'], precision=2)
-        zmax_add = tools.num_to_str(af[methods[0]][mcuts[0]]['z_max'], precision=2)
         means = np.array([af['omega_m'], af['sigma_8'], af['w0']])
         means = sigma_8_to_S8(means, alpha=alpha)
         for method in methods:
             for mcut in mcuts:
-                m = af[method][mcut]['maps']
+                m = af[method][mcut][res]['maps']
                 m = sigma_8_to_S8(m, alpha=alpha)
                 m = abs_to_rel(m, means)
                 results[method][mcut]['maps'] = m
-                results[method][mcut]['loglikes'] = af[method][mcut]['fun']
+                results[method][mcut]['loglikes'] = af[method][mcut][res]['fun']
 
     prms_names = ['om', 's8', 'w0']
     prms_means = [0, 0, 0]
@@ -1746,8 +1743,9 @@ def plot_cosmological_1d_mcuts(
         'ha': 'right',
         'va': 'center',
     }
-    method_names = [method for method in methods if method in methods_info.keys()]
-    method_labels = [methods_info[method]['label'] for method in methods_info.keys()]
+
+    method_names = [method for method in methods]
+    method_labels = [methods_info[method]['label'] for method in methods]
     method_kwargs = {m: methods_info[m] for m in methods}
     legend_kwargs = {
         'bbox_to_anchor': (1.1, 1.4, 0.8, 0.2),
@@ -1787,7 +1785,7 @@ def plot_cosmological_1d_mcuts(
     )
     fname = (
         f'fit_om_s8_w0_Asurvey_{A_add}deg2'
-        f'_z_{zmin_add}_{zmax_add}_1D_mcuts'
+        f'_1D_mcuts'
     )
     plt.savefig(
         f'{PAPER_DIR}/{fname}.pdf', transparent=True
@@ -1873,8 +1871,6 @@ def plot_cosmological_1d_gauss_vs_mixed(
     results = dict((m, {mcut: {} for mcut in mcuts}) for m in methods_info.keys())
     with asdf.open(fname, copy_arrays=True, lazy_load=False) as af:
         A_add = tools.num_to_str(af['A_survey'], unit='k', precision=1)
-        zmin_add = tools.num_to_str(af['true'][mcuts[0]]['z_min'], precision=2)
-        zmax_add = tools.num_to_str(af['true'][mcuts[0]]['z_max'], precision=2)
         means = np.array([af['omega_m'], af['sigma_8'], af['w0']])
         means = sigma_8_to_S8(means, alpha=alpha)
         for method in methods_info.keys():
@@ -1947,7 +1943,7 @@ def plot_cosmological_1d_gauss_vs_mixed(
     )
     fname = (
         f'fit_om_s8_w0_Asurvey_{A_add}deg2'
-        f'_z_{zmin_add}_{zmax_add}_1D_prof_likelihood_comparison' )
+        f'_1D_prof_likelihood_comparison' )
     plt.savefig( f'{PAPER_DIR}/{fname}.pdf', transparent=True )
     plt.show()
 
