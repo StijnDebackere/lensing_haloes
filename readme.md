@@ -6,8 +6,9 @@ The `lensing_haloes` module provides all the ingredients to reproduce the result
 Downloading the cluster samples from
 [Zenodo](https://zenodo.org/record/4469437) is the fastest way to have
 a look at the data. There you can find the generated cluster samples
-for both stage III and stage IV-like surveys and their best-fitting
-cosmologies.
+for stage III-like surveys (stage IV dataset exceeds 50 GB limit) and
+the best-fitting cosmologies for all stage III and stage IV-like
+surveys.
 
 ## Installation
 In the desired location, type
