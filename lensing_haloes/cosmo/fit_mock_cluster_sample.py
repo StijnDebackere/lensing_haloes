@@ -3,6 +3,7 @@ i.e. the cluster likelihood, finding the MAP of the cluster sample,
 ...
 """
 from multiprocessing import Process, Manager
+from pathlib import Path
 import os
 import time
 
@@ -603,7 +604,10 @@ def sample_gaussian_likelihood(
             #     fname_map = af[method][np.round(np.log10(kwargs['m200m_min']), 2)]['res_gaussian']['x']
 
         sampler = emcee.EnsembleSampler(
-            nwalkers, ndim, lnlike_options[lnlike], kwargs=kwargs, pool=pool
+            nwalkers, ndim, lnlike_options[lnlike], kwargs=kwargs, pool=pool,
+            backend=emcee.backends.HDFBackend(
+                filename=str(Path(fname).with_suffix('.chains.hdf5'))
+            )
         )
         pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
         t1 = time.time()
