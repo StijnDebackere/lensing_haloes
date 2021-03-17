@@ -606,7 +606,8 @@ def sample_gaussian_likelihood(
         sampler = emcee.EnsembleSampler(
             nwalkers, ndim, lnlike_options[lnlike], kwargs=kwargs, pool=pool,
             backend=emcee.backends.HDFBackend(
-                filename=str(Path(fname).with_suffix('.chains.hdf5'))
+                filename=str(Path(fname).with_suffix('.chains.hdf5')),
+                name=f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/mcmc/',
             )
         )
         pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
