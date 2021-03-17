@@ -118,6 +118,116 @@ def lnlike_poisson_mizi(
     return float(2 * (sum_obs - E))
 
 
+def sample_poisson_likelihood(
+    fnames,
+    method,
+    z_min,
+    z_max,
+    m200m_min,
+    theta_init,
+    bounds,
+    cosmo_fixed,
+    nwalkers=32,
+    nsamples=5000,
+    discard=100,
+    out_q=None,
+    pool=None,
+):
+    """Sample the likelihood
+
+    Parameters
+    ----------
+    fnames : list
+        list of filenames
+    method : str
+        mass fitting method
+    lnlike : str
+        likelihood to use: gaussian or mixed
+    z_min : float
+        minimum redshift in the sample
+    z_max : float
+        maximum redshift in the sample
+    m200m_min : float
+        minimum halo mass in the sample
+    theta_init : list of lists
+        values of initial cosmology guess for each fname in order
+        [omega_m, sigma_8, w0, omega_b, h, n_s]
+    bounds : (ndim, 2) array-like
+        array containing lower and upper bounds for each dimension
+    cosmo_fixed : list of dict keys
+        cosmological parameters that are kept fixed
+        ['omega_m', 'sigma_8', 'w0', 'omega_b', 'h', 'n_s']
+    nwalkers : int
+        number of walkers to use in MCMC
+    nsamples : int
+        number of samples for each walker
+    discard : int
+        burn-in of the chains
+    out_q : Queue() instance or None
+        queue to put results in
+        [Default: None]
+    pool : Pool object
+        optional pool to use for EnsembleSampler
+
+    Returns
+    -------
+    - (samples, log_probs) to out_q if not None
+    """
+    bounds = np.atleast_2d(bounds)
+    ndim = bounds.shape[0]
+    maps = np.empty((0, ndim), dtype=float)
+
+    for fname in fnames:
+        with asdf.open(fname, copy_arrays=True) as af:
+            # load possibly referenced values
+            af.resolve_references()
+            m200m_sample = af[method]["m200m_sample"][:]
+            selection = af[method]["selection"][:]
+            z_sample = af["z_sample"][selection]
+            A_survey = af["A_survey"]
+
+            selection = (
+                (z_sample > z_min) & (z_sample < z_max)
+                & (m200m_sample > m200m_min)
+            )
+            kwargs = {
+                "m200m_min": m200m_min,
+                "z_min": z_min,
+                "z_max": z_max,
+                "m200m_sample": m200m_sample[selection],
+                "z_sample": z_sample[selection],
+                "A_survey": A_survey,
+                "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
+            }
+
+        sampler = emcee.EnsembleSampler(
+            nwalkers,
+            ndim,
+            lnlike_poisson_mizi,
+            kwargs=kwargs,
+            pool=pool,
+            backend=emcee.backends.HDFBackend(
+                filename=str(Path(fname).with_suffix(".chains.hdf5")),
+                name=f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/mcmc/',
+            ),
+        )
+        pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
+        t1 = time.time()
+        sampler.run_mcmc(pos, nsamples, progress=True)
+        t2 = time.time()
+
+        samples = sampler.get_chain()[discard:].reshape(-1, ndim)
+        log_probs = sampler.get_log_probs()[discard:].reshape(-1)
+
+        print(f"{os.getpid()} (took {t2 - t1:.2f}s)")
+
+    if out_q is not None:
+        out_q.put([os.getpid(), [samples, log_probs]])
+
+    else:
+        return (samples, log_probs)
+
+
 def fit_maps_poisson(
     theta_init, kwargs, bounds, fnames=None, method="true", out_q=None
 ):
@@ -604,11 +714,15 @@ def sample_gaussian_likelihood(
             #     fname_map = af[method][np.round(np.log10(kwargs['m200m_min']), 2)]['res_gaussian']['x']
 
         sampler = emcee.EnsembleSampler(
-            nwalkers, ndim, lnlike_options[lnlike], kwargs=kwargs, pool=pool,
+            nwalkers,
+            ndim,
+            lnlike_options[lnlike],
+            kwargs=kwargs,
+            pool=pool,
             backend=emcee.backends.HDFBackend(
-                filename=str(Path(fname).with_suffix('.chains.hdf5')),
+                filename=str(Path(fname).with_suffix(".chains.hdf5")),
                 name=f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/mcmc/',
-            )
+            ),
         )
         pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
         t1 = time.time()
