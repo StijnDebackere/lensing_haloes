@@ -9,10 +9,10 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 import lensing_haloes.settings as settings
-import lensing_haloes.data.generate_mock_lensing as mock_lensing
-import lensing_haloes.data.generate_survey_results as gen_survey
+import lensing_haloes.results as results
+import lensing_haloes.lensing.generate_mock_lensing as mock_lensing
 import lensing_haloes.data.observational_data as obs_data
-import lensing_haloes.data.process_data as process_data
+import lensing_haloes.halo.model as model
 import lensing_haloes.halo.profiles as profs
 import lensing_haloes.util.plot as plot
 import lensing_haloes.util.tools as tools
@@ -159,10 +159,10 @@ def check_fit_parameters_fit(
     ls_rt_f = []
     ls_a_f = []
     for idx_z, z_l in enumerate(z_ls):
-        results_all = process_data.get_rho_gas_fits_all(
+        results_all = model.get_rho_gas_fits_all(
             r_range=None, z_l=z_l, dlog10r=dlog10r, datasets=[dataset],
             outer_norm=outer_norm)
-        results_bins = process_data.get_rho_gas_fits_bins(
+        results_bins = model.get_rho_gas_fits_bins(
             r_range=None, z_l=z_l, dlog10r=dlog10r, datasets=[dataset],
             n_bins=n_bins, outer_norm=outer_norm)
 
@@ -407,7 +407,7 @@ def check_fit_parameters2D(
             lazy_load=False, copy_arrays=True) as af:
         results = af.tree
 
-    l10_rt_fit, a_fit, vals = gen_survey.fit_rt_alpha_model(
+    l10_rt_fit, a_fit, vals = results.fit_rt_alpha_model(
         data_dir=data_dir, model_fname_append=model_fname_append, m_ref=m_ref,
         diagnostic=True, n_bins=3,
     )
@@ -505,7 +505,7 @@ def check_rho_gas_fits_all(
         outer_norm=None, ids=None, plot_fit=True):
     """Plot the fractional di_bins b5_binstween the best-fitting gas profile
     bins and the true gas profile."""
-    results = process_data.get_rho_gas_fits_all(
+    results = model.get_rho_gas_fits_all(
         r_range=None, z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm)
 
@@ -587,7 +587,7 @@ def check_rho_gas_fits_bins(
         z_l=0.43, dlog10r=2, outer_norm=None):
     """Plot the fractional difference between the best-fitting gas profile
     and the true gas profile."""
-    results = process_data.get_rho_gas_fits_bins(
+    results = model.get_rho_gas_fits_bins(
         datasets=[dataset], n_bins=n_bins, z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm, n_r=n_r,
     )
@@ -695,7 +695,7 @@ def check_rho_gas_slope_fits_bins(
         z_l=0.43, dlog10r=2, outer_norm=None):
     """Plot the fractional difference between the best-fitting gas profile
     and the true gas profile."""
-    results = process_data.get_rho_gas_fits_bins(
+    results = model.get_rho_gas_fits_bins(
         datasets=[dataset], n_bins=n_bins, z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm,
     )
@@ -746,7 +746,7 @@ def check_mr_gas_fits_all(
         dlog10r=2, n_int=1000):
     """Plot the fractional difference between the best-fitting enclosed
     gas mass profiles and the true ones."""
-    results = process_data.get_rho_gas_fits_all(
+    results = model.get_rho_gas_fits_all(
         z_l=z_l, dlog10r=0, outer_norm=outer_norm
     )
 
@@ -781,19 +781,19 @@ def check_mr_gas_fits_all(
             rho_gas_err = res['rho_gas_err']
             r500c = res['r_x']
 
-            mr_gas_fit = process_data.mr_gas_from_fbar(
+            mr_gas_fit = model.mr_gas_from_fbar(
                 r=rx*r500c, r_y=r500c, **res['opt_prms'], **res['dm_kwargs']
             )
-            mr_gas = process_data.mr_gas_from_rho_gas(
+            mr_gas = model.mr_gas_from_rho_gas(
                 r=rx*r500c, rs=rx*r500c, rho_gas=rho_gas,
                 dlog10r=dlog10r, n_int=n_int
             )
             mr_gas_err = np.mean([
-                mr_gas - process_data.mr_gas_from_rho_gas(
+                mr_gas - model.mr_gas_from_rho_gas(
                     r=rx*r500c, rs=rx*r500c, rho_gas=rho_gas-rho_gas_err,
                     dlog10r=dlog10r, n_int=n_int
                 ),
-                process_data.mr_gas_from_rho_gas(
+                model.mr_gas_from_rho_gas(
                     r=rx*r500c, rs=rx*r500c, rho_gas=rho_gas+rho_gas_err,
                     dlog10r=dlog10r, n_int=n_int
                 ) - mr_gas
@@ -841,7 +841,7 @@ def check_mr_gas_fits_bins(
         n_bins=3, z_l=0.43, dlog10r=2, n_int=1000):
     """Plot the fractional difference between the best-fitting gas profile
     and the true gas profile."""
-    results = process_data.get_rho_gas_fits_bins(
+    results = model.get_rho_gas_fits_bins(
         datasets=[dataset], n_bins=n_bins, z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm,
     )
@@ -867,23 +867,23 @@ def check_mr_gas_fits_bins(
         rho_gas_q16 = res['rho_gas_q16']
         rho_gas_q84 = res['rho_gas_q84']
 
-        mr_gas_fit = process_data.mr_gas_from_fbar(
+        mr_gas_fit = model.mr_gas_from_fbar(
             r=rx*r500c[idx], r_y=r500c[idx], **res['opt_prms'], **res['dm_kwargs']
         )
         # like-for-like comparison
-        # mr_gas_fit = process_data.mr_gas_from_rho_gas(
+        # mr_gas_fit = model.mr_gas_from_rho_gas(
         #     r=rx*r500c[idx], rs=rx*r500c[idx], rho_gas=rho_gas_fit,
         #     dlog10r=dlog10r, n_int=n_int
         # )
-        mr_gas_med = process_data.mr_gas_from_rho_gas(
+        mr_gas_med = model.mr_gas_from_rho_gas(
             r=rx*r500c[idx], rs=rx*r500c[idx], rho_gas=rho_gas_med,
             dlog10r=dlog10r, n_int=n_int
         )
-        mr_gas_q16 = process_data.mr_gas_from_rho_gas(
+        mr_gas_q16 = model.mr_gas_from_rho_gas(
             r=rx*r500c[idx], rs=rx*r500c[idx], rho_gas=rho_gas_q16,
             dlog10r=dlog10r, n_int=n_int
         )
-        mr_gas_q84 = process_data.mr_gas_from_rho_gas(
+        mr_gas_q84 = model.mr_gas_from_rho_gas(
             r=rx*r500c[idx], rs=rx*r500c[idx], rho_gas=rho_gas_q84,
             dlog10r=dlog10r, n_int=n_int
         )
@@ -929,7 +929,7 @@ def check_fbar_fits_all(
         dlog10r=2, n_int=1000):
     """Plot the fractional difference between the best-fitting enclosed
     gas mass profiles and the true ones."""
-    results = process_data.get_rho_gas_fits_all(
+    results = model.get_rho_gas_fits_all(
         z_l=z_l, dlog10r=0, outer_norm=outer_norm)
 
     plt.clf()
@@ -965,7 +965,7 @@ def check_fbar_fits_all(
             fbar_err = res['fbar_rx_err']
             r500c = res['r_x']
 
-            fbar_fit = process_data.fbar_rx(rx=rx, **res['opt_prms'])
+            fbar_fit = model.fbar_rx(rx=rx, **res['opt_prms'])
             c = cmap(np.log10(m500c[idx]))
             ax.plot(rx * r500c, fbar_data / fbar, c=c, lw=3, alpha=1)
             # ax.plot(rx * r500c, fbar_fit, c=c, lw=1, ls="--", alpha=0.5)
@@ -1007,7 +1007,7 @@ def check_fbar_fits_bins(
         outer_norm=None):
     """Plot the fractional difference between the best-fitting gas profile
     and the true gas profile."""
-    results = process_data.get_rho_gas_fits_bins(
+    results = model.get_rho_gas_fits_bins(
         datasets=[dataset], n_bins=n_bins, z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm, n_r=n_r,
     )
@@ -1041,7 +1041,7 @@ def check_fbar_fits_bins(
         fbar_err = res['fbar_rx_err']
         fbar = results['omega_b'] / results['omega_m']
 
-        fbar_fit = process_data.fbar_rx(rx=rx, **res['opt_prms'])
+        fbar_fit = model.fbar_rx(rx=rx, **res['opt_prms'])
 
         ld = ax.errorbar(
             rx * r500c[idx], fbar_data / fbar, yerr=fbar_err / fbar,
@@ -1107,7 +1107,7 @@ def check_fbar_fits_r_bins(
     omega_m = 0.315
     fbar = omega_b / omega_m
 
-    fit_prms = gen_survey.fit_observational_dataset(
+    fit_prms = results.fit_observational_dataset(
         dataset=dataset, z=z_l, omega_b=omega_b, omega_m=omega_m,
         dlog10r=dlog10r, n_int=n_int, n_bins=n_bins, outer_norm=outer_norm,
         err=True, diagnostic=True, bins=True
@@ -1117,10 +1117,10 @@ def check_fbar_fits_r_bins(
     log10_rt_prms_min = fit_prms['min']['log10_rt']
     log10_rt_prms_plus = fit_prms['plus']['log10_rt']
 
-    log10_rt = gen_survey.linear_fit(np.log10(m500c), *log10_rt_prms)
-    alpha = gen_survey.linear_fit(np.log10(m500c), *alpha_prms)
-    log10_rt_plus = gen_survey.linear_fit(np.log10(m500c), *log10_rt_prms_plus)
-    log10_rt_min = gen_survey.linear_fit(np.log10(m500c), *log10_rt_prms_min)
+    log10_rt = results.linear_fit(np.log10(m500c), *log10_rt_prms)
+    alpha = results.linear_fit(np.log10(m500c), *alpha_prms)
+    log10_rt_plus = results.linear_fit(np.log10(m500c), *log10_rt_prms_plus)
+    log10_rt_min = results.linear_fit(np.log10(m500c), *log10_rt_prms_min)
 
     # set up the figure
     plt.clf()
@@ -1149,13 +1149,13 @@ def check_fbar_fits_r_bins(
 
 
     for idx, rx in enumerate(r500cs):
-        fbar_fit = process_data.fbar_rx(
+        fbar_fit = model.fbar_rx(
             rx=rx, log10_rt=log10_rt, alpha=alpha,
             fbar=fbar, fbar0=0)
-        fbar_fit_plus = process_data.fbar_rx(
+        fbar_fit_plus = model.fbar_rx(
             rx=rx, log10_rt=log10_rt_plus, alpha=alpha,
             fbar=fbar, fbar0=0)
-        fbar_fit_min = process_data.fbar_rx(
+        fbar_fit_min = model.fbar_rx(
             rx=rx, log10_rt=log10_rt_min, alpha=alpha,
             fbar=fbar, fbar0=0)
 
@@ -1189,10 +1189,10 @@ def compare_model_beta_fit_all(
         dataset='croston+08', z_l=None, dlog10r=2,
         outer_norm=None):
     """Plot the fractional difference between the best-fitting gas profiles."""
-    results_beta = process_data.get_rho_gas_fits_all(
+    results_beta = model.get_rho_gas_fits_all(
         datasets=[dataset], z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm)
-    results_fbar = process_data.get_rho_gas_fits_all(
+    results_fbar = model.get_rho_gas_fits_all(
         datasets=[dataset], rx_range=np.geomspace(0.15, 1.4, 20), log=True,
         z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm)
@@ -1230,7 +1230,7 @@ def compare_model_beta_fit_all(
 
         fbar_prms = results_fbar[dataset]['fit_results'][idx]['opt_prms']
         dm_kwargs = results_fbar[dataset]['fit_results'][idx]['dm_kwargs']
-        rho_gas_fbar = process_data.rho_gas_from_fbar(
+        rho_gas_fbar = model.rho_gas_from_fbar(
             r=rx*r_x, r_y=r_x, **fbar_prms, **dm_kwargs
         )
 
@@ -1293,11 +1293,11 @@ def compare_model_beta_fit_bins(
         dataset='croston+08', z_l=None, dlog10r=2,
         n_bins=3, n_r=15, outer_norm=None):
     """Plot the fractional difference between the best-fitting gas profiles."""
-    results_beta = process_data.get_rho_gas_fits_bins(
+    results_beta = model.get_rho_gas_fits_bins(
         datasets=[dataset], n_bins=n_bins, z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm, n_r=n_r,
     )
-    results_fbar = process_data.get_rho_gas_fits_bins(
+    results_fbar = model.get_rho_gas_fits_bins(
         datasets=[dataset], rx_range=np.geomspace(0.15, 1.4, n_r), log=True,
         z_l=z_l, dlog10r=dlog10r,
         outer_norm=outer_norm)
@@ -1331,7 +1331,7 @@ def compare_model_beta_fit_bins(
 
         fbar_prms = results_fbar[dataset]['fit_results'][idx]['opt_prms']
         dm_kwargs = results_fbar[dataset]['fit_results'][idx]['dm_kwargs']
-        rho_gas_fbar = process_data.rho_gas_from_fbar(
+        rho_gas_fbar = model.rho_gas_from_fbar(
             r=rx*r_x, r_y=r_x, **fbar_prms, **dm_kwargs
         )
 
@@ -1825,8 +1825,6 @@ def check_mass_ratio_m200m_obs_dmo(
             f'{fname_base}_plus_{model_fname_range}.asdf',
             lazy_load=False, copy_arrays=True) as af:
         results_plus = af.tree
-
-
 
     z = results['z']
     m500c = results['m500c']

@@ -1,29 +1,38 @@
+import pdb
 from pathlib import Path
 
 import asdf
 import getdist
-from getdist import plots
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.legend_handler import HandlerTuple
 import numpy as np
+import plotting_tools.saving as saving
 import scipy.interpolate as interp
 import scipy.optimize as opt
+from getdist import plots
+from matplotlib.legend_handler import HandlerTuple
 
-import lensing_haloes.results as results
-import lensing_haloes.settings as settings
-import lensing_haloes.lensing.generate_mock_lensing as mock_lensing
+import lensing_haloes.cosmo.cosmo as cosmo
 import lensing_haloes.data.observational_data as obs_data
+import lensing_haloes.halo.abundance as abundance
 import lensing_haloes.halo.model as halo_model
 import lensing_haloes.halo.profiles as profs
+import lensing_haloes.lensing.generate_mock_lensing as mock_lensing
+import lensing_haloes.results as results
+import lensing_haloes.settings as settings
 import lensing_haloes.util.plot as plot
 import lensing_haloes.util.tools as tools
-
 
 TABLE_DIR = settings.TABLE_DIR
 FIGURE_DIR = settings.FIGURE_DIR
 PAPER_DIR = settings.PAPER_DIR
 OBS_DIR = settings.OBS_DIR
+LIGHT = True
+if LIGHT:
+    bw_color = 'black'
+else:
+    bw_color = 'white'
+saving.paper_style(light=LIGHT)
 
 dashes_WL = (15, 10)
 dashes_WL_rs = (2, 2, 2, 2)
@@ -41,7 +50,6 @@ def plot_fit_parameters_fit(
     z_ls = np.atleast_1d(z_ls)
     # prepare figure
     plt.clf()
-    plt.style.use('paper')
     fig = plt.figure(1)
     fig.set_size_inches(10, 9, forward=True)
     ax = fig.add_axes([0.15, 0.15, 0.8, 0.8])
@@ -86,8 +94,8 @@ def plot_fit_parameters_fit(
         l_rt_f, = ax.plot(10**m, linear_fit(m, *opt_rt), c=cmap(idx_z))
         l_a_f, = ax.plot(10**m, linear_fit(m, *opt_a), c=cmap(idx_z))
 
-        l_f, = ax.plot(m500c_bins, log10_rt_bins, c='k', lw=3)
-        ax.plot(m500c_bins, alpha_bins, c='k', lw=3)
+        l_f, = ax.plot(m500c_bins, log10_rt_bins, c=bw_color, lw=3)
+        ax.plot(m500c_bins, alpha_bins, c=bw_color, lw=3)
 
         rt_rel_diff = np.abs(log10_rt_all / linear_fit(np.log10(m500c_all), *opt_rt) - 1)
         a_rel_diff = np.abs(alpha_all / linear_fit(np.log10(m500c_all), *opt_a) - 1)
@@ -170,6 +178,74 @@ def plot_fit_parameters_fit(
     return mismatches
 
 
+def plot_N_mz(fname, z_bin_edges, log10_m200m_bin_edges):
+    """Plot the cluster number counts as a function of mass and redshift."""
+    with asdf.open(fname, lazy_load=False, copy_arrays=True) as af:
+        results = af.tree
+
+    cosmology = {
+        'omega_m': results['omega_m'],
+        'sigma_8': results['sigma_8'],
+        'omega_b': results['omega_b'],
+        'w0': results['w0'],
+        'h': results['h'],
+        'n_s': results['n_s'],
+    }
+
+    z = results['z_sample']
+    m200m = results['true']['m200m_sample']
+
+    N_obs_bin, _, _ = np.histogram2d(
+        z, np.log10(m200m), bins=[
+            z_bin_edges, log10_m200m_bin_edges
+        ], density=False,
+    )
+    z_bins = tools.bin_centers(z_bin_edges)
+    log10_m200m_bins = tools.bin_centers(log10_m200m_bin_edges)
+
+    N_theory_bin = abundance.N_in_bins(
+        z_bin_edges=z_bin_edges, m200m_bin_edges=10**log10_m200m_bin_edges,
+        n_z=20, n_m=100, cosmo=cosmo.cosmology(**cosmology),
+        A_survey=results['A_survey']
+    )
+
+    plt.clf()
+    fig = plt.figure(1)
+    ax = fig.add_axes([0.15, 0.15, 0.8, 0.8])
+    ax_cb = fig.add_axes([0.5, 0.825, 0.3, 0.05])
+
+    cmap = plot.get_partial_cmap(mpl.cm.plasma_r, a=0.25, b=0.75)
+    norm = mpl.colors.Normalize(vmin=z_bins.min(), vmax=z_bins.max())
+    sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+    cmap = sm.to_rgba
+
+    for idx_z, z_bin in enumerate(z_bins):
+        c = cmap(z_bin)
+        ax.errorbar(
+            log10_m200m_bins, N_obs_bin[idx_z],
+            yerr=np.sqrt(N_theory_bin[idx_z]),
+            lw=0, marker='o', elinewidth=1, c=c
+        )
+        ax.plot(log10_m200m_bins, N_theory_bin[idx_z], c=c)
+
+    cb = plt.colorbar(sm, cax=ax_cb, orientation='horizontal')
+    cb.set_label(r'$z$')
+
+    ax.set_title(
+        f'$\Omega_\mathrm{{survey}}={results["A_survey"]:d} \, \mathrm{{deg^2}}$',
+        color=bw_color,
+    )
+
+
+    ax.set_ylim([0.5, 5e3])
+    ax.set_xlabel(r'$\log_{10}m_\mathrm{200m} \, [h^{-1} \, \mathrm{M_\odot}]$')
+    ax.set_ylabel(r'$N(z, m_\mathrm{200m})$')
+    # ax.set_xscale('log')
+    ax.set_yscale('log')
+    plt.savefig(f'{PAPER_DIR}/N_obs_vs_theory.pdf', bbox_inches='tight')
+    plt.show()
+
+
 def plot_rho_gas_fits_bins(
         dataset='croston+08', n_bins=3, n_r=15,
         z_l=0.43, dlog10r=2, outer_norm=None):
@@ -183,7 +259,6 @@ def plot_rho_gas_fits_bins(
     )
 
     plt.clf()
-    plt.style.use('paper')
     fig = plt.figure(1)
     fig.set_size_inches(10, 12, forward=True)
     # fig.set_size_inches(10, 13, forward=True)
@@ -191,21 +266,21 @@ def plot_rho_gas_fits_bins(
     ax_r = fig.add_axes([0.15, 0.125, 0.8, 0.4])
     ax_cb = fig.add_axes([0.175, 0.65, 0.45, 0.05])
 
-    cmap = plot.get_partial_cmap_indexed(mpl.cm.plasma_r, N=n_bins)
+    cmap = plot.get_partial_cmap_indexed(mpl.cm.plasma_r, N=n_bins, b=0.75)
 
     ax_r.text(
         0.95, 0.95, f'$z={z_l:.2f}$',
         va='top', ha='right',
         transform=ax_r.transAxes,
-        color='black', fontsize=30)
+        color=bw_color, fontsize=30)
     # ax.text(
     #     0.95, 0.9, 'Croston+2008',
     #     va='center', ha='right',
     #     transform=ax.transAxes,
-    #     color='black', fontsize=30)
+    #     color=bw_color, fontsize=30)
     ax_r.axhline(y=0, ls="--", c="k")
-    ax_r.axhspan(-0.01, .01, facecolor="k", alpha=0.3)
-    ax_r.axhspan(-0.05, .05, facecolor="k", alpha=0.1)
+    ax_r.axhspan(-0.01, .01, facecolor=bw_color, alpha=0.3)
+    ax_r.axhspan(-0.05, .05, facecolor=bw_color, alpha=0.1)
 
     m500c = results[dataset]['m500c_bins'][:]
     r500c = results[dataset]['r500c_bins'][:]
@@ -219,21 +294,29 @@ def plot_rho_gas_fits_bins(
         rho_gas_q84 = res['rho_gas_q84']
 
         ax.plot(rx * r500c[idx], rho_gas_fit, c=cmap(idx), lw=3)
-        ld = ax.errorbar(
-            rx * r500c[idx], rho_gas_med,
-            yerr=(rho_gas_med - rho_gas_q16, rho_gas_q84 - rho_gas_med),
-            c=cmap(idx), marker='o', elinewidth=1, lw=0,
-        )
-        ls_d.append(ld)
-        # ax.plot(rx * r500c[idx], rho_gas_fit, c=cmap(idx), lw=2)
-        # ax.fill_between(
+        # lf = ax.fill_between(
         #     rx * r500c[idx], rho_gas_q16, rho_gas_q84,
         #     color=cmap(idx), alpha=0.2
         # )
+        # ls_d.append((ld, lf))
+        ld = ax.errorbar(
+            rx * r500c[idx],
+            rho_gas_med,
+            yerr=(rho_gas_med - rho_gas_q16, rho_gas_q84 - rho_gas_med),
+            c=cmap(idx),
+            marker="o",
+            elinewidth=1,
+            lw=0,
+        )
+        ls_d.append(ld)
+        # ld, = ax.plot(rx * r500c[idx], rho_gas_med, c=cmap(idx), lw=2)
+
         ax_r.plot(
-            rx * r500c[idx], rho_gas_med / rho_gas_fit - 1,
+            # rx * r500c[idx], (rho_gas_med - rho_gas_fit) / ((rho_gas_q84 - rho_gas_q16)),
+            rx * r500c[idx], (rho_gas_med / rho_gas_fit - 1),
             c=cmap(idx), marker='o', lw=3
         )
+        # print(np.median((rho_gas_med / rho_gas_fit - 1) / (rho_gas_q84 / rho_gas_fit - rho_gas_q16 / rho_gas_fit)))
         # ax_r.plot(rx * r500c[idx], rho_gas_med / rho_gas_fit - 1, c=cmap(idx), lw=3)
         # ax_r.plot(rx * r500c[idx], rho_gas_med / rho_gas_fit - 1, c=cmap(idx), lw=2)
         # ax_r.fill_between(
@@ -252,12 +335,14 @@ def plot_rho_gas_fits_bins(
         [tuple(ls_d)],
         ['Croston+2008'],
         handler_map={tuple: plot.HandlerTuple(n_bins)},
-        markerfirst=False, loc=1
+        markerfirst=False, loc=1,
+        labelcolor=bw_color,
     )
 
     ax.set_xlim(left=0.01)
     ax.set_ylim(bottom=10**13.01, top=10**15.5)
     ax_r.set_xlim(left=0.01)
+    # ax_r.set_ylim(-1, 1)
     ax_r.set_ylim(-0.1, 0.1)
     ax.set_xscale('log')
     ax.set_xticklabels([])
@@ -272,6 +357,10 @@ def plot_rho_gas_fits_bins(
         r'$\rho_\mathrm{gas}(r) / \rho_\mathrm{gas,fit}(r) - 1$',
         labelpad=-0.5,
     )
+    # ax_r.set_ylabel(
+    #     r'$(\rho_\mathrm{gas}(r) - \rho_\mathrm{gas,fit}(r)) / (P_{84\%} - P_{16\%}) $',
+    #     labelpad=-0.5,
+    # )
     if outer_norm is not None:
         fname_append = f"_rx_{outer_norm['rx']:d}_fbar_{outer_norm['fbar']:.2f}"
     else:
@@ -292,7 +381,6 @@ def plot_rho_gas_fits_all(
         outer_norm=outer_norm)
 
     plt.clf()
-    plt.style.use('paper')
     fig = plt.figure(1)
     fig.set_size_inches(10, 13, forward=True)
     ax = fig.add_axes([0.1, 0.5, 0.8, 0.4])
@@ -376,14 +464,13 @@ def plot_fbar_fits_all(
         z_l=z_l, dlog10r=0, outer_norm=outer_norm)
 
     plt.clf()
-    plt.style.use('paper')
     fig = plt.figure(1)
     fig.set_size_inches(8, 10, forward=True)
     ax = fig.add_axes([0.1, 0.5, 0.8, 0.4])
     ax_r = fig.add_axes([0.1, 0.1, 0.8, 0.4])
     ax_cb = fig.add_axes([0.45, 0.65, 0.425, 0.05])
 
-    cmap = plot.get_partial_cmap(mpl.cm.plasma_r)
+    cmap = plot.get_partial_cmap(mpl.cm.plasma_r, b=0.75)
     norm = mpl.colors.Normalize(
         vmin=np.min([
             np.min(np.log10(results[d]['m500c'])) for d in datasets
@@ -458,7 +545,6 @@ def plot_fbar_fits_bins(
     )
 
     plt.clf()
-    plt.style.use('paper')
     fig = plt.figure(1)
     fig.set_size_inches(10, 12, forward=True)
     # fig.set_size_inches(10, 13, forward=True)
@@ -466,16 +552,17 @@ def plot_fbar_fits_bins(
     ax_r = fig.add_axes([0.15, 0.125, 0.8, 0.4])
     ax_cb = fig.add_axes([0.475, 0.65, 0.45, 0.05])
 
-    cmap = plot.get_partial_cmap_indexed(mpl.cm.plasma_r, N=n_bins)
+    cmap = plot.get_partial_cmap_indexed(
+        mpl.cm.plasma_r, b=0.75, N=n_bins)
 
     ax_r.text(
         0.95, 0.95, f'$z={z_l:.2f}$',
         va='top', ha='right',
         transform=ax_r.transAxes,
-        color='black', fontsize=30)
+        color=bw_color, fontsize=30)
     ax_r.axhline(y=0, ls="--", c="k")
-    ax_r.axhspan(-0.01, .01, facecolor="k", alpha=0.3)
-    ax_r.axhspan(-0.05, .05, facecolor="k", alpha=0.1)
+    ax_r.axhspan(-0.01, .01, facecolor=bw_color, alpha=0.3)
+    ax_r.axhspan(-0.05, .05, facecolor=bw_color, alpha=0.1)
 
     m500c = results[dataset]['m500c_bins'][:]
     r500c = results[dataset]['r500c_bins'][:]
@@ -515,7 +602,8 @@ def plot_fbar_fits_bins(
         [tuple(ls_d)],
         ['Croston+2008'],
         handler_map={tuple: plot.HandlerTuple(n_bins)},
-        markerfirst=True, loc=2
+        markerfirst=True, loc=2,
+        labelcolor=bw_color,
     )
 
     ax.set_xlim(left=1e-2)
@@ -554,7 +642,7 @@ def plot_fbar_fits_rx(
     omega_m = 0.315
     fbar = omega_b / omega_m
 
-    fit_prms = results.fit_dataset(
+    fit_prms = results.fit_observational_dataset(
         dataset=dataset, z=z_l, omega_b=omega_b, omega_m=omega_m,
         dlog10r=dlog10r, n_int=n_int, n_bins=n_bins, outer_norm=outer_norm,
         err=True, diagnostic=True, bins=True
@@ -571,20 +659,20 @@ def plot_fbar_fits_rx(
 
     # set up the figure
     plt.clf()
-    plt.style.use('paper')
     fig = plt.figure(1)
     fig.set_size_inches(10, 10, forward=True)
     # fig.set_size_inches(10, 13, forward=True)
     ax = fig.add_axes([0.15, 0.15, 0.8, 0.8])
     ax_cb = fig.add_axes([0.6, 0.3, 0.2, 0.05])
 
-    cmap = plot.get_partial_cmap_indexed(mpl.cm.plasma_r, N=len(r500cs))
+    cmap = plot.get_partial_cmap_indexed(
+        mpl.cm.plasma_r, N=len(r500cs), b=0.75)
 
     # ax.text(
     #     0.95, 0.95, f'$z={z_l:.2f}$',
     #     va='top', ha='right',
     #     transform=ax.transAxes,
-    #     color='black', fontsize=30)
+    #     color=bw_color, fontsize=30)
 
     ld = ax.errorbar(
         results_data['m500c'][:],
@@ -621,7 +709,8 @@ def plot_fbar_fits_rx(
     ax.legend(
         [ld],
         ['Croston+2008'],
-        markerfirst=True, loc=2
+        markerfirst=True, loc=2,
+        labelcolor=bw_color,
     )
 
     ax.set_ylim(top=1.1)
@@ -632,7 +721,7 @@ def plot_fbar_fits_rx(
     plt.show()
 
 
-def check_shear_red_profile_bins(
+def plot_shear_red_profile_bins(
         z_ref=0.43,
         m500c_refs=[10**13.97, 10**14.27, 10**14.52, 10**15],
         data_dir=TABLE_DIR,
@@ -668,15 +757,15 @@ def check_shear_red_profile_bins(
 
     # set up figure style and axes
     plt.clf()
-    plt.style.use('paper')
     fig = plt.figure(1)
     fig.set_size_inches(10, 12, forward=True)
-    ax = fig.add_axes([0.15, 0.525, 0.8, 0.4])
-    ax_r = fig.add_axes([0.15, 0.125, 0.8, 0.4])
+    ax = fig.add_axes([0.15, 0.675, 0.8, 0.25])
+    ax_r = fig.add_axes([0.15, 0.125, 0.8, 0.55])
     # ax_cb = fig.add_axes([0.45, 0.65, 0.475, 0.05])
-    ax_cb = fig.add_axes([0.475, 0.45, 0.4, 0.05])
+    ax_cb = fig.add_axes([0.475, 0.6, 0.4, 0.05])
 
-    cmap = plot.get_partial_cmap_indexed(mpl.cm.plasma_r, N=len(m500c_refs))
+    cmap = plot.get_partial_cmap_indexed(
+        mpl.cm.plasma_r, N=len(m500c_refs), b=0.75)
 
     ls_d = []
     ls_t = []
@@ -721,13 +810,14 @@ def check_shear_red_profile_bins(
             xytext=(r500c[idx_z_ref, idx_m_ref], 0.96),
             arrowprops=dict(
                 facecolor=cmap(idx), shrink=0.,
+                edgecolor=bw_color,
             ),
         )
 
     ax_r.text(
         r500c[idx_z_ref, idx_m_ref], 0.96,
         '$r_\mathrm{500c}$', va='bottom', ha='center',
-        color='black', fontsize=30,
+        color=bw_color, fontsize=30
     )
 
     ax.axvspan(
@@ -742,8 +832,8 @@ def check_shear_red_profile_bins(
     )
 
     ax_r.axhline(y=1, c="k", ls="--")
-    ax_r.axhspan(0.99, 1.01, facecolor="k", alpha=0.3)
-    ax_r.axhspan(0.98, 1.02, facecolor="k", alpha=0.1)
+    ax_r.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax_r.axhspan(0.98, 1.02, facecolor=bw_color, alpha=0.1)
 
     cb = plot.add_colorbar_indexed(
         cmap_indexed=cmap, fig=fig, ax_cb=ax_cb,
@@ -760,6 +850,7 @@ def check_shear_red_profile_bins(
         [r'"observed"'], loc=1,
         handler_map={tuple: plot.HandlerTuple(len(m500c_refs))},
         frameon=False, markerfirst=False,
+        labelcolor=bw_color,
     )
     ax.add_artist(leg)
 
@@ -772,6 +863,7 @@ def check_shear_red_profile_bins(
         [r"", r"true", r"NFW", r"NFW $r_\mathrm{s}$ free"],
         handler_map={tuple: plot.HandlerTupleVertical()},
         frameon=False, markerfirst=False,
+        labelcolor=bw_color,
     )
 
     ax.set_xlim(
@@ -790,7 +882,7 @@ def check_shear_red_profile_bins(
         0.95, 0.05, f"$z={z[idx_z_ref]:.2f}$",
         va='bottom', ha='right',
         transform=ax_r.transAxes,
-        color='black', fontsize=30
+        color=bw_color, fontsize=30
     )
 
     ax.set_xticklabels([])
@@ -837,12 +929,12 @@ def plot_deprojected_masses_bins(
     )
 
     # prepare the axes
-    plt.style.use('paper')
     fig = plt.figure(figsize=(10, 9))
     ax = fig.add_axes([0.15, 0.15, 0.8, 0.8])
     ax_cb = fig.add_axes([0.525, 0.875, 0.4, 0.05])
 
-    cmap = plot.get_partial_cmap_indexed(mpl.cm.plasma_r, N=len(m500c_refs))
+    cmap = plot.get_partial_cmap_indexed(
+        mpl.cm.plasma_r, N=len(m500c_refs), b=0.75)
 
     idx_z_ref = np.argmin(np.abs(z - z_ref))
     idx_m_refs = np.array([
@@ -872,19 +964,19 @@ def plot_deprojected_masses_bins(
             xytext=(r500c[idx_z_ref, idx_m_ref], 0.91),
             arrowprops=dict(
                 facecolor=cmap(idx), shrink=0.,
+                edgecolor=bw_color,
             ),
         )
 
     ax.axvspan(R_bins.min(), R_bins.max(), color="g", alpha=0.2)
     ax.axhline(y=1, c="k", ls="--")
-    ax.axhspan(0.99, 1.01, facecolor="k", alpha=0.3)
-    ax.axhspan(0.95, 1.05, facecolor="k", alpha=0.1)
+    ax.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax.axhspan(0.95, 1.05, facecolor=bw_color, alpha=0.1)
 
     ax.text(
         r500c[idx_z_ref, idx_m_refs[0]], 0.915,
         '$r_\mathrm{500c}$', va='bottom', ha='center',
-
-        color='k', fontsize=30,
+        color=bw_color, fontsize=30,
     )
 
     ax.set_xlim(0.1, 6)
@@ -895,7 +987,7 @@ def plot_deprojected_masses_bins(
         0.05, 0.05, f"$z={z[idx_z_ref]}$",
         va='center', ha='left',
         transform=ax.transAxes,
-        color='black', fontsize=30
+        color=bw_color, fontsize=30
     )
 
     cb = plot.add_colorbar_indexed(
@@ -912,6 +1004,7 @@ def plot_deprojected_masses_bins(
         [r"NFW", r"NFW $r_\mathrm{s}$ free"],
         handler_map={tuple: plot.HandlerTupleVertical()},
         loc=4, frameon=False, markerfirst=False,
+        labelcolor=bw_color, fontsize=30
     )
     leg.get_frame().set_linewidth(0)
 
@@ -978,17 +1071,17 @@ def plot_mass_ratio_m200m_obs_dmo(
 
     # set up style and axes
     plt.clf()
-    plt.style.use("paper")
     fig = plt.figure(1)
     fig.set_size_inches(10, 9, forward=True)
-    ax_obs = fig.add_axes([0.15, 0.6, 0.8, 0.35])
-    ax_dmo = fig.add_axes([0.15, 0.25, 0.8, 0.35])
-    ax_c = fig.add_axes([0.15, 0.15, 0.8, 0.1])
+    dy = 0.8
+    ax_obs = fig.add_axes([0.15, 0.15 + 0.2 + 0.3, 0.8, 0.3])
+    ax_dmo = fig.add_axes([0.15, 0.15 + 0.2, 0.8, 0.3])
+    ax_c = fig.add_axes([0.15, 0.15, 0.8, 0.2])
 
     # plot concentration ratio
-    ax_c.axhline(y=1, c='k', ls='--')
-    ax_c.axhspan(0.99, 1.01, facecolor="k", alpha=0.3)
-    ax_c.axhspan(0.95, 1.05, facecolor="k", alpha=0.1)
+    ax_c.axhline(y=1, c=bw_color, ls='--')
+    ax_c.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax_c.axhspan(0.95, 1.05, facecolor=bw_color, alpha=0.1)
     ax_c.plot(
         m500c, rs_WL[idx_z_ref] / rs_dmo[idx_z_ref],
         dashes=dashes_WL
@@ -999,12 +1092,12 @@ def plot_mass_ratio_m200m_obs_dmo(
     )
 
     ax_dmo.axhline(y=1, c="k", ls="--")
-    ax_dmo.axhspan(0.99, 1.01, facecolor="k", alpha=0.3)
-    ax_dmo.axhspan(0.98, 1.02, facecolor="k", alpha=0.1)
+    ax_dmo.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax_dmo.axhspan(0.98, 1.02, facecolor=bw_color, alpha=0.1)
 
     ax_obs.axhline(y=1, c="k", ls="--")
-    ax_obs.axhspan(0.99, 1.01, facecolor="k", alpha=0.3)
-    ax_obs.axhspan(0.98, 1.02, facecolor="k", alpha=0.1)
+    ax_obs.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax_obs.axhspan(0.98, 1.02, facecolor=bw_color, alpha=0.1)
 
     # plot obs lines
     l_WL_obs, = ax_obs.plot(
@@ -1050,7 +1143,8 @@ def plot_mass_ratio_m200m_obs_dmo(
         0.05, 0.1, f'$z={z[idx_z_ref]:.2f}$',
         va='center', ha='left',
         transform=ax_obs.transAxes,
-        color='black', fontsize=30)
+        color=bw_color, fontsize=30
+    )
 
     leg = ax_dmo.legend(
         [
@@ -1064,6 +1158,7 @@ def plot_mass_ratio_m200m_obs_dmo(
         handler_map={tuple: plot.HandlerTupleVertical()},
         loc=4, ncol=1,
         frameon=False, markerfirst=False,
+        labelcolor=bw_color
     )
     leg.get_frame().set_linewidth(0)
 
@@ -1090,6 +1185,142 @@ def plot_mass_ratio_m200m_obs_dmo(
         fontsize=25, labelpad=0)
 
     fname = f'm200m_dmo+obs_vs_WL_fgas_r_{model_fname_append}'
+    plt.savefig(PAPER_DIR + fname + '.pdf', transparent=True)
+    plt.show()
+
+
+def plot_mass_ratio_m200m_dmo(
+        z_ref=0.43,
+        data_dir=TABLE_DIR,
+        model_fname_base='planck2019_z_0p43_m500c_13p5-15p5_nbins_4',
+        model_fname_range='R_0p75-2p5'):
+    """Plot the ratio between the best-fitting and the true m200m_obs,
+    m200m_dmo and r_s.
+
+    """
+    results = {}
+    fname_base = f'{TABLE_DIR}/observational_results_fgas_r_{model_fname_base}'
+    model_fname_append = f'{model_fname_base}_{model_fname_range}'
+    with asdf.open(
+            f'{fname_base}_{model_fname_range}.asdf',
+            lazy_load=False, copy_arrays=True) as af:
+        results = af.tree
+    with asdf.open(
+            f'{fname_base}_min_{model_fname_range}.asdf',
+            lazy_load=False, copy_arrays=True) as af:
+        results_min = af.tree
+    with asdf.open(
+            f'{fname_base}_plus_{model_fname_range}.asdf',
+            lazy_load=False, copy_arrays=True) as af:
+        results_plus = af.tree
+
+
+
+    z = results['z']
+    m500c = results['m500c']
+    fbar = results['omega_b'] / results['omega_m']
+
+    idx_z_ref = np.argmin(np.abs(z - 0.43))
+
+    m200m_dmo = results['m200m_dmo']
+    c200m_dmo = results['c200m_dmo']
+    rs_dmo = results['r200m_dmo'] / results['c200m_dmo']
+    m200m_WL = results['m200m_WL']
+    rs_WL = results['r200m_WL'] / results['c200m_WL']
+    m200m_WL_rs = results['m200m_WL_rs']
+    c200m_WL_rs = results['c200m_WL_rs']
+    rs_WL_rs = results['r200m_WL_rs'] / results['c200m_WL_rs']
+
+    m200m_dmo_min = results_min['m200m_dmo']
+    m200m_WL_min = results_min['m200m_WL']
+    m200m_WL_rs_min = results_min['m200m_WL_rs']
+    m200m_dmo_plus = results_plus['m200m_dmo']
+    m200m_WL_plus = results_plus['m200m_WL']
+    m200m_WL_rs_plus = results_plus['m200m_WL_rs']
+
+    # set up style and axes
+    plt.clf()
+    fig = plt.figure(1)
+    fig.set_size_inches(10, 9, forward=True)
+    ax_dmo = fig.add_axes([0.15, 0.25, 0.8, 0.7])
+    ax_c = fig.add_axes([0.15, 0.15, 0.8, 0.1])
+
+    # plot concentration ratio
+    ax_c.axhline(y=1, c=bw_color, ls='--')
+    ax_c.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax_c.axhspan(0.95, 1.05, facecolor=bw_color, alpha=0.1)
+    ax_c.plot(
+        m500c, rs_WL[idx_z_ref] / rs_dmo[idx_z_ref],
+        dashes=dashes_WL
+    )
+    ax_c.plot(
+        m500c, rs_WL_rs[idx_z_ref] / rs_dmo[idx_z_ref],
+        dashes=dashes_WL_rs
+    )
+
+    ax_dmo.axhline(y=1, c="k", ls="--")
+    ax_dmo.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax_dmo.axhspan(0.98, 1.02, facecolor=bw_color, alpha=0.1)
+
+    # plot dmo lines
+    l_WL_dmo, = ax_dmo.plot(
+        m500c, m200m_WL[idx_z_ref] / m200m_dmo[idx_z_ref],
+        dashes=dashes_WL,
+    )
+    ax_dmo.fill_between(
+        m500c, m200m_WL_min[idx_z_ref] / m200m_dmo_min[idx_z_ref],
+        m200m_WL_plus[idx_z_ref] / m200m_dmo_plus[idx_z_ref],
+        color=l_WL_dmo.get_color(), alpha=0.3
+    )
+    l_WL_c_dmo, = ax_dmo.plot(
+        m500c, m200m_WL_rs[idx_z_ref] / m200m_dmo[idx_z_ref],
+        dashes=dashes_WL_rs,
+    )
+    ax_dmo.fill_between(
+        m500c, m200m_WL_rs_min[idx_z_ref] / m200m_dmo_min[idx_z_ref],
+        m200m_WL_rs_plus[idx_z_ref] / m200m_dmo_plus[idx_z_ref],
+        color=l_WL_c_dmo.get_color(), alpha=0.3
+    )
+
+    ax_dmo.text(
+        0.05, 0.1, f'$z={z[idx_z_ref]:.2f}$',
+        va='center', ha='left',
+        transform=ax_dmo.transAxes,
+        color=bw_color, fontsize=30
+    )
+
+    leg = ax_dmo.legend(
+        [
+            l_WL_dmo,
+            l_WL_c_dmo,
+         ],
+        [
+            r"$i=$NFW",
+            r"$i=$NFW $r_\mathrm{s}$ free",
+        ],
+        handler_map={tuple: plot.HandlerTupleVertical()},
+        loc=4, ncol=1,
+        frameon=False, markerfirst=False,
+        labelcolor=bw_color
+    )
+    leg.get_frame().set_linewidth(0)
+
+    ax_dmo.set_ylim(0.87, 1.05)
+    ax_dmo.set_xscale("log")
+
+    ax_c.set_xscale('log')
+    ax_c.set_xlabel(r'$m_\mathrm{500c} \, [h^{-1} \, \mathrm{M_\odot}]$')
+    ax_c.set_ylabel(
+        r'$r_{\mathrm{s},i} / r_\mathrm{s,dmo}$',
+        fontsize=30, labelpad=15)
+
+    ax_dmo.set_xticklabels([])
+
+    ax_dmo.set_ylabel(
+        r'$m_{\mathrm{200m},i}/m_\mathrm{200m,dmo}$',
+        fontsize=30, labelpad=15)
+
+    fname = f'm200m_dmo_vs_WL_fgas_r_{model_fname_append}'
     plt.savefig(PAPER_DIR + fname + '.pdf', transparent=True)
     plt.show()
 
@@ -1155,7 +1386,6 @@ def plot_mass_ratio_m_aperture(
         )
 
     # set up style and axes
-    plt.style.use("paper")
     fig = plt.figure(figsize=(10,9))
     ax_obs = fig.add_axes([0.15, 0.65, 0.8, 0.3])
     ax_dmo = fig.add_axes([0.15, 0.15, 0.8, 0.5])
@@ -1163,12 +1393,12 @@ def plot_mass_ratio_m_aperture(
     # ax_cb = fig.add_axes([0.3, 0.83, 0.4, 0.05])
 
     ax_dmo.axhline(y=1, c="k", ls="--")
-    ax_dmo.axhspan(0.99, 1.01, facecolor="k", alpha=0.3)
-    ax_dmo.axhspan(0.98, 1.02, facecolor="k", alpha=0.1)
+    ax_dmo.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax_dmo.axhspan(0.98, 1.02, facecolor=bw_color, alpha=0.1)
 
     ax_obs.axhline(y=1, c="k", ls="--")
-    ax_obs.axhspan(0.99, 1.01, facecolor="k", alpha=0.3)
-    ax_obs.axhspan(0.98, 1.02, facecolor="k", alpha=0.1)
+    ax_obs.axhspan(0.99, 1.01, facecolor=bw_color, alpha=0.3)
+    ax_obs.axhspan(0.98, 1.02, facecolor=bw_color, alpha=0.1)
     # plot obs results
     l_WL, = ax_obs.plot(
         m500c,
@@ -1192,7 +1422,7 @@ def plot_mass_ratio_m_aperture(
     l_t, = ax_dmo.plot(
         m500c,
         results['med']['M_ap_true'][idx_z_ref] / results['med']['M_ap_dmo'][idx_z_ref],
-        ls='-', c='k', lw=1
+        ls='-', c=bw_color, lw=1
     )
     l_WL_dmo, = ax_dmo.plot(
         m500c,
@@ -1216,22 +1446,22 @@ def plot_mass_ratio_m_aperture(
     l_WL_200m, = ax_obs.plot(
         m500c,
         results['med']['m200m_WL'][idx_z_ref] / results['med']['m200m_obs'][idx_z_ref],
-        c='k', alpha=0.5, dashes=dashes_WL
+        c=bw_color, alpha=0.5, dashes=dashes_WL
     )
     l_WL_rs_200m, = ax_obs.plot(
         m500c,
         results['med']['m200m_WL_rs'][idx_z_ref] / results['med']['m200m_obs'][idx_z_ref],
-        c='k', alpha=0.5, dashes=dashes_WL_rs
+        c=bw_color, alpha=0.5, dashes=dashes_WL_rs
     )
     l_WL_200m, = ax_dmo.plot(
         m500c,
         results['med']['m200m_WL'][idx_z_ref] / results['med']['m200m_dmo'][idx_z_ref],
-        c='k', alpha=0.5, dashes=dashes_WL
+        c=bw_color, alpha=0.5, dashes=dashes_WL
     )
     l_WL_rs_200m, = ax_dmo.plot(
         m500c,
         results['med']['m200m_WL_rs'][idx_z_ref] / results['med']['m200m_dmo'][idx_z_ref],
-        c='k', alpha=0.5, dashes=dashes_WL_rs
+        c=bw_color, alpha=0.5, dashes=dashes_WL_rs
     )
 
     ax_dmo.text(
@@ -1244,14 +1474,15 @@ def plot_mass_ratio_m_aperture(
         ),
         va='bottom', ha='right',
         transform=ax_dmo.transAxes,
-        color='black', fontsize=30
+        color=bw_color, fontsize=30
     )
 
     ax_obs.text(
         0.05, 0.05, f'$z={z[idx_z_ref]:.2f}$',
         va='bottom', ha='left',
         transform=ax_obs.transAxes,
-        color='black', fontsize=30)
+        color=bw_color, fontsize=30
+    )
 
     idx_ann = int(0.25 * len(m500c))
     ax_dmo.annotate(
@@ -1262,9 +1493,11 @@ def plot_mass_ratio_m_aperture(
         ),
         # (-50, -10), textcoords='offset points',
         (0.015, 0.6), textcoords=ax_dmo.transAxes,
+        color=bw_color, fontsize=30,
         ha='left', va='center',
         arrowprops=dict(
-            facecolor='k', shrink=0.,
+            facecolor=bw_color, shrink=0.,
+            edgecolor=bw_color,
         ),
     )
 
@@ -1281,6 +1514,7 @@ def plot_mass_ratio_m_aperture(
         handler_map={tuple: plot.HandlerTupleVertical()},
         loc='upper center', ncol=2,
         frameon=False, markerfirst=False,
+        labelcolor=bw_color,
     )
     leg.get_frame().set_linewidth(0)
     leg = ax_dmo.legend(
@@ -1295,6 +1529,7 @@ def plot_mass_ratio_m_aperture(
         handler_map={tuple: plot.HandlerTupleVertical()},
         loc='upper center', ncol=2,
         frameon=False, markerfirst=False,
+        labelcolor=bw_color,
     )
     leg.get_frame().set_linewidth(0)
 
@@ -1344,16 +1579,13 @@ def sigma_8_to_S8(maps, alpha=0.2, idx_om=0, idx_s8=1):
 def plot_cosmological_contours(
         fname, methods, mcut, stage='III',
         res='res_gaussian', alpha=0.2, S8=True, relative=True,
-        bounds=np.array([
-            [-0.15, 0.05], [-0.04, 0.005], [-0.05, 0.16]]),
-):
+        bounds=None):
     """Plot the 2D contours for method and mcut in fnames."""
-
     methods_info = {
         'true': {
             'label': 'true',
             'ls': '--',
-            'color': 'k',
+            'color': bw_color,
             'args': {'alpha': 1.},
             'filled': False
         },
@@ -1372,6 +1604,16 @@ def plot_cosmological_contours(
             'filled': True
         },
     }
+    if bounds is None:
+        if stage is None:
+            raise ValueError('if no bounds are provided, need to specify stage')
+        elif stage == 'IV':
+            bounds = np.array([
+                [-0.15, 0.05], [-0.04, 0.005], [-0.05, 0.16]])
+        elif stage == 'III':
+            bounds = np.array([
+                [-0.39, 0.25], [-0.049, 0.019], [-0.49, 0.49]])
+
     results = dict((m, {}) for m in methods)
     with asdf.open(fname, copy_arrays=True, lazy_load=False) as af:
         A_add = tools.num_to_str(af['A_survey'], unit='k', precision=1)
@@ -1449,6 +1691,9 @@ def plot_cosmological_contours(
 
         axs[2, 1].set_xlim(bounds[1])
         axs[2, 1].set_ylim(bounds[2])
+
+    for t in g.legend.get_texts():
+        t.set_color(bw_color)
 
     # for ax in axs.flatten():
     #     if ax is None:
@@ -1647,7 +1892,7 @@ def plot_cosmological_1d(
                 )
                 leg_patches.append(patch)
                 if prms_means is not None:
-                    ax.axvline(x=prms_means[idx_p], c='k', ls='--')
+                    ax.axvline(x=prms_means[idx_p], c=bw_color, ls='--')
 
             if idx_v == 0:
                 ax.set_xlabel(f'${samples_set[idx_m, 0].parLabel(prms_names[idx_p])}$')
@@ -1682,13 +1927,13 @@ def plot_cosmological_1d(
 
 def plot_cosmological_1d_mcuts(
         fname, methods, mcuts, res='res_gaussian', alpha=0.2,
-        bounds=np.array([[-0.2, 0.2], [-0.04, 0.01], [-0.2, 0.4]])):
+        bounds=None, stage=None):
     """Plot the marginalized 1D PDFs for different mass cuts."""
     methods_info = {
         'true': {
             'label': 'true',
             'ls': '-',
-            'color': 'k',
+            'color': bw_color,
             'alpha': 0.6,
         },
         'WL': {
@@ -1704,6 +1949,15 @@ def plot_cosmological_1d_mcuts(
             'alpha': 0.6,
         },
     }
+    if bounds is None:
+        if stage is None:
+            raise ValueError('if no bounds are provided, need to specify stage')
+        elif stage == 'IV':
+            bounds = np.array([
+                [-0.15, 0.05], [-0.04, 0.005], [-0.05, 0.16]])
+        elif stage == 'III':
+            bounds = np.array([
+                [-0.39, 0.25], [-0.049, 0.019], [-0.49, 0.49]])
 
     methods = [method for method in methods if method in methods_info.keys()]
     results = dict((m, {mcut: {} for mcut in mcuts}) for m in methods)
@@ -1726,19 +1980,14 @@ def plot_cosmological_1d_mcuts(
     var_labels = [f'${mcut:.2f}$' for mcut in mcuts]
     var_title = r'$\log_{10} m_\mathrm{200m,min}$'
     var_label_kwargs = {
-        'color': 'k',
-        'ha': 'right',
-        'va': 'center',
-    }
-    var_label_kwargs = {
-        'color': 'k',
+        'color': bw_color,
         'ha': 'right',
         'va': 'center',
     }
     var_title_kwargs = {
         'x': -0.35,
         'y': 0,
-        'color': 'k',
+        'color': bw_color,
         'rotation': 90,
         'ha': 'right',
         'va': 'center',
@@ -1753,6 +2002,7 @@ def plot_cosmological_1d_mcuts(
         'handletextpad': 1.0,
         'columnspacing': 2.0,
         'loc': 'upper center',
+        'labelcolor': bw_color,
         'fontsize': 30,
         'ncol': 3
     }
@@ -1796,8 +2046,7 @@ def plot_cosmological_1d_mcuts(
 
 
 def plot_cosmological_1d_gauss_vs_mixed(
-        fname, mcuts=[14.0], alpha=0.2,
-        bounds=np.array([[-0.15, 0.05], [-0.04, 0.01], [-0.05, 0.2]])):
+        fname, mcuts=[14.0], alpha=0.2, bounds=None, stage=None):
     """Plot the marginalized 1D PDFs for different likelihoods."""
     methods_info = {
         'true_gaussian': {
@@ -1807,7 +2056,7 @@ def plot_cosmological_1d_gauss_vs_mixed(
             'kwargs': {
                 'label': 'true',
                 'ls': '--',
-                'color': 'k',
+                'color': bw_color,
                 'alpha': 0.3,
             },
         },
@@ -1818,7 +2067,7 @@ def plot_cosmological_1d_gauss_vs_mixed(
             'kwargs': {
                 'label': 'true',
                 'ls': '-',
-                'color': 'k',
+                'color': bw_color,
                 'alpha': 0.5,
             },
         },
@@ -1867,6 +2116,13 @@ def plot_cosmological_1d_gauss_vs_mixed(
             },
         },
     }
+    if bounds is None:
+        if stage == 'IV':
+            bounds = np.array([
+                [-0.15, 0.05], [-0.04, 0.005], [-0.05, 0.16]])
+        elif stage == 'III':
+            bounds = np.array([
+                [-0.39, 0.25], [-0.049, 0.019], [-0.49, 0.49]])
 
     results = dict((m, {mcut: {} for mcut in mcuts}) for m in methods_info.keys())
     with asdf.open(fname, copy_arrays=True, lazy_load=False) as af:
@@ -1890,14 +2146,14 @@ def plot_cosmological_1d_gauss_vs_mixed(
     var_labels = [f'${mcut:.2f}$' for mcut in mcuts]
     var_title = r'$\log_{10} m_\mathrm{200m,min}$'
     var_label_kwargs = {
-        'color': 'k',
+        'color': bw_color,
         'ha': 'right',
         'va': 'center',
     }
     var_title_kwargs = {
         'x': -0.05,
         'y': 0.1,
-        'color': 'k',
+        'color': bw_color,
         'rotation': 90,
         'ha': 'right',
         'va': 'bottom',
@@ -1911,6 +2167,7 @@ def plot_cosmological_1d_gauss_vs_mixed(
         'handletextpad': 0.5,
         'columnspacing': 1.0,
         'loc': 'upper left',
+        'labelcolor': bw_color,
         'fontsize': 22,
         'ncol': 3
     }
@@ -1950,8 +2207,7 @@ def plot_cosmological_1d_gauss_vs_mixed(
 
 def plot_cosmological_1d_profile(
         fname, mcut=14.0, methods=['true', 'WL', 'WL_c'],
-        res='res_gaussian', alpha=0.2,
-        bounds=np.array([[-0.15, 0.05], [-0.042, 0.01], [-0.05, 0.2]])):
+        res='res_gaussian', alpha=0.2, stage=None, bounds=None):
     """Plot the marginalized 1D PDFs for different mass cuts."""
     methods_info = {
         'true': {
@@ -1962,7 +2218,7 @@ def plot_cosmological_1d_profile(
             'kwargs': {
                 'label': 'true',
                 'ls': '-',
-                'color': 'k',
+                'color': bw_color,
                 'alpha': 0.6,
             }
         },
@@ -1991,6 +2247,16 @@ def plot_cosmological_1d_profile(
             }
         },
     }
+    if bounds is None:
+        if stage is None:
+            raise ValueError('if no bounds are provided, need to specify stage')
+        elif stage == 'IV':
+            bounds = np.array([
+                [-0.15, 0.05], [-0.04, 0.005], [-0.05, 0.16]])
+        elif stage == 'III':
+            bounds = np.array([
+                [-0.39, 0.25], [-0.049, 0.019], [-0.49, 0.49]])
+
     prof_qs = ['min', 'max', 'med']
 
     results = dict((m, {prof_q: {} for prof_q in prof_qs}) for m in methods)
@@ -2017,14 +2283,14 @@ def plot_cosmological_1d_profile(
     var_labels = ['$f_\mathrm{gas, min}$', '$f_\mathrm{gas, med}$', '$f_\mathrm{gas, max}$']
     var_title = None
     var_label_kwargs = {
-        'color': 'k',
+        'color': bw_color,
         'ha': 'right',
         'va': 'center',
     }
     var_title_kwargs = {
         'x': -0.35,
         'y': -0.0,
-        'color': 'k',
+        'color': bw_color,
         'rotation': 90,
         'ha': 'right',
         'va': 'center',

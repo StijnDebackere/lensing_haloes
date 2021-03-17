@@ -7,6 +7,7 @@ import os
 import time
 
 import asdf
+import emcee
 from george import kernels
 import numpy as np
 from numpy.random import default_rng
@@ -28,11 +29,15 @@ LN_SQRT_2PI = np.log(np.sqrt(2 * np.pi))
 
 
 def lnlike_poisson_mizi(
-        theta, m200m_sample, z_sample,
-        z_min, z_max, m200m_min,
-        cosmo_fixed,
-        A_survey=2500,
-        MassFunc=MassFuncTinker08,
+    theta,
+    m200m_sample,
+    z_sample,
+    z_min,
+    z_max,
+    m200m_min,
+    cosmo_fixed,
+    A_survey=2500,
+    MassFunc=MassFuncTinker08,
 ):
     """
     Poisson likelihood calculation
@@ -84,17 +89,17 @@ def lnlike_poisson_mizi(
     # other parameters should be updated in the astropy FlatwCDM object
     # through cosmo_params
     cosmo = cosmology(
-        omega_m=omega_m, sigma_8=sigma_8, w0=w0,
-        omega_b=omega_b, h=h, n_s=n_s
+        omega_m=omega_m, sigma_8=sigma_8, w0=w0, omega_b=omega_b, h=h, n_s=n_s
     )
 
     # calculate E from Cash (1979)
     E = abundance.dNdlog10mdz_integral(
-        z_min=z_min, z_max=z_max,
+        z_min=z_min,
+        z_max=z_max,
         log10_m200m_min=np.log10(m200m_min),
         cosmo=cosmo,
         A_survey=A_survey,
-        MassFunc=MassFunc
+        MassFunc=MassFunc,
     )
 
     selection = (z_sample <= z_max) & (m200m_sample >= m200m_min) & (z_sample >= z_min)
@@ -104,7 +109,7 @@ def lnlike_poisson_mizi(
         log10_m200m=np.log10(m200m_sample[selection]),
         cosmo=cosmo,
         A_survey=A_survey,
-        MassFunc=MassFunc
+        MassFunc=MassFunc,
     )
     sum_obs = np.sum(np.log(dNdlog10mdz_i))
 
@@ -113,9 +118,8 @@ def lnlike_poisson_mizi(
 
 
 def fit_maps_poisson(
-        theta_init, kwargs, bounds,
-        fnames=None, method='true',
-        out_q=None):
+    theta_init, kwargs, bounds, fnames=None, method="true", out_q=None
+):
     """Fit the maximum a posteriori probability for the halo samples
     saved in fnames.
 
@@ -145,45 +149,47 @@ def fit_maps_poisson(
     maps = np.empty((0, ndim), dtype=float)
 
     for idx, kws in enumerate(kwargs):
+
         def nll(theta, kwargs):
-            return -lnlike_poisson_mizi(
-                theta=theta, **kwargs
-            )
+            return -lnlike_poisson_mizi(theta=theta, **kwargs)
 
         t1 = time.time()
         res = opt.minimize(
-            nll,
-            theta_init[idx],
-            args=(kws,),
-            bounds=bounds,
-            method="L-BFGS-B"
+            nll, theta_init[idx], args=(kws,), bounds=bounds, method="L-BFGS-B"
         )
         t2 = time.time()
 
-        print(f"{os.getpid()} (took {t2 - t1:.2f}s): succes = {res.success} x = {res.x} nfev = {res.nfev}")
+        print(
+            f"{os.getpid()} (took {t2 - t1:.2f}s): succes = {res.success} x = {res.x} nfev = {res.nfev}"
+        )
         maps = np.concatenate([maps, res.x.reshape(-1, ndim)], axis=0)
         if fnames is not None:
             # append results to asdf file
             with asdf.open(fnames[idx], mode="rw") as af:
-                if np.round(np.log10(kws['m200m_min']), 2) not in af.tree[method].keys():
-                    af.tree[method][np.round(np.log10(kws['m200m_min']), 2)] = {}
+                if (
+                    np.round(np.log10(kws["m200m_min"]), 2)
+                    not in af.tree[method].keys()
+                ):
+                    af.tree[method][np.round(np.log10(kws["m200m_min"]), 2)] = {}
 
-                af.tree[method][np.round(np.log10(kws['m200m_min']), 2)]['res_poisson'] = {
-                    'theta_init': theta_init[idx],
-                    'fun': res.fun,
-                    'jac': res.jac,
-                    'message': res.message,
-                    'nfev': res.nfev,
-                    'nit': res.nit,
-                    'njev': res.njev,
-                    'status': res.status,
-                    'success': res.success,
-                    'x': res.x,
-                    'm200m_min': kws['m200m_min'],
-                    'z_min': kws['z_min'],
-                    'z_max': kws['z_max'],
-                    'A_survey': kws['A_survey'],
-                    'cosmo_fixed': kws['cosmo_fixed'],
+                af.tree[method][np.round(np.log10(kws["m200m_min"]), 2)][
+                    "res_poisson"
+                ] = {
+                    "theta_init": theta_init[idx],
+                    "fun": res.fun,
+                    "jac": res.jac,
+                    "message": res.message,
+                    "nfev": res.nfev,
+                    "nit": res.nit,
+                    "njev": res.njev,
+                    "status": res.status,
+                    "success": res.success,
+                    "x": res.x,
+                    "m200m_min": kws["m200m_min"],
+                    "z_min": kws["z_min"],
+                    "z_max": kws["z_max"],
+                    "A_survey": kws["A_survey"],
+                    "cosmo_fixed": kws["cosmo_fixed"],
                 }
                 af.update()
 
@@ -195,21 +201,21 @@ def fit_maps_poisson(
 
 
 def fit_maps_poisson_mp(
-        fnames, method,
-        z_min, z_max, m200m_min,
-        bounds,
-        theta_init=[
-            0.315,
-            0.811,
-            -1.0,
-        ],
-        cosmo_fixed=[
-            "omega_b",
-            "h",
-            "n_s"
-        ],
-        rng=default_rng(0),
-        n_cpus=None):
+    fnames,
+    method,
+    z_min,
+    z_max,
+    m200m_min,
+    bounds,
+    theta_init=[
+        0.315,
+        0.811,
+        -1.0,
+    ],
+    cosmo_fixed=["omega_b", "h", "n_s"],
+    rng=default_rng(0),
+    n_cpus=None,
+):
     """Fit the maximum a posteriori probability for the halo samples
     saved in fnames.
 
@@ -241,7 +247,7 @@ def fit_maps_poisson_mp(
     -------
     (n, ndim) array with MAP for each fname
     """
-    method_options = ['WL', 'WL_c', 'true']
+    method_options = ["WL", "WL_c", "true"]
     if method not in method_options:
         raise ValueError(f"{method} not in {method_options}")
 
@@ -250,7 +256,9 @@ def fit_maps_poisson_mp(
 
     theta_init = np.atleast_1d(theta_init)
     # add random error to theta_init to avoid exact result
-    theta_init = theta_init[None, :] + 1e-3 * rng.normal(size=(len(fnames), len(theta_init)))
+    theta_init = theta_init[None, :] + 1e-3 * rng.normal(
+        size=(len(fnames), len(theta_init))
+    )
 
     # set up process management
     manager = Manager()
@@ -258,21 +266,17 @@ def fit_maps_poisson_mp(
     procs = []
 
     kwargs_lst = []
-    for fname in tqdm(
-            fnames,
-            desc="Loading kwargs",
-            position=0):
+    for fname in tqdm(fnames, desc="Loading kwargs", position=0):
         with asdf.open(fname, copy_arrays=True) as af:
             # load possibly referenced values
             af.resolve_references()
-            m200m_sample = af[method]['m200m_sample'][:]
-            selection = af[method]['selection'][:]
-            z_sample = af['z_sample'][selection]
-            A_survey = af['A_survey']
+            m200m_sample = af[method]["m200m_sample"][:]
+            selection = af[method]["selection"][:]
+            z_sample = af["z_sample"][selection]
+            A_survey = af["A_survey"]
 
             selection = (
-                (z_sample > z_min) & (z_sample < z_max)
-                & (m200m_sample > m200m_min)
+                (z_sample > z_min) & (z_sample < z_max) & (m200m_sample > m200m_min)
             )
             kwargs = {
                 "m200m_min": m200m_min,
@@ -281,7 +285,7 @@ def fit_maps_poisson_mp(
                 "m200m_sample": m200m_sample[selection],
                 "z_sample": z_sample[selection],
                 "A_survey": A_survey,
-                "cosmo_fixed": [af[prm] for prm in cosmo_fixed]
+                "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
             }
             kwargs_lst.append(kwargs)
 
@@ -300,7 +304,8 @@ def fit_maps_poisson_mp(
                 bounds,
                 fns,
                 method,
-                out_q)
+                out_q,
+            ),
         )
 
         procs.append(process)
@@ -324,14 +329,15 @@ def fit_maps_poisson_mp(
 
 
 def lnlike_gaussian_poisson_mizi(
-        theta, Nobs_mizi,
-        log10_m200m_bin_edges,
-        z_bin_edges,
-        cosmo_fixed,
-        A_survey=2500,
-        MassFunc=MassFuncTinker08,
-        pool=None,
-        **kwargs
+    theta,
+    Nobs_mizi,
+    log10_m200m_bin_edges,
+    z_bin_edges,
+    cosmo_fixed,
+    A_survey=2500,
+    MassFunc=MassFuncTinker08,
+    pool=None,
+    **kwargs,
 ):
     """
     Mixed likelihood with Gaussian expectation value
@@ -375,27 +381,28 @@ def lnlike_gaussian_poisson_mizi(
     # other parameters should be updated in the astropy FlatwCDM object
     # through cosmo_params
     cosmo = cosmology(
-        omega_m=omega_m, sigma_8=sigma_8, w0=w0,
-        omega_b=omega_b, h=h, n_s=n_s
+        omega_m=omega_m, sigma_8=sigma_8, w0=w0, omega_b=omega_b, h=h, n_s=n_s
     )
 
     N_mizi = abundance.N_in_bins(
         z_bin_edges=z_bin_edges,
-        m200m_bin_edges=10**log10_m200m_bin_edges,
-        n_z=50, n_m=100,
-        cosmo=cosmo, A_survey=A_survey, MassFunc=MassFunc,
-        pool=pool
+        m200m_bin_edges=10 ** log10_m200m_bin_edges,
+        n_z=50,
+        n_m=100,
+        cosmo=cosmo,
+        A_survey=A_survey,
+        MassFunc=MassFunc,
+        pool=pool,
     )
     lnlike_mixed_mizi = np.where(
         Nobs_mizi > 10,
         # Gaussian likelihood if N in bin is > 10
         (
-            -(Nobs_mizi - N_mizi)**2 / (2 * N_mizi)
-            - 0.5 * np.log(N_mizi) - LN_SQRT_2PI
-        ), (
-            Nobs_mizi * np.log(N_mizi) - N_mizi
-            - np.log(factorial(Nobs_mizi))
-        )
+            -((Nobs_mizi - N_mizi) ** 2) / (2 * N_mizi)
+            - 0.5 * np.log(N_mizi)
+            - LN_SQRT_2PI
+        ),
+        (Nobs_mizi * np.log(N_mizi) - N_mizi - np.log(factorial(Nobs_mizi))),
     )
 
     # need to return a float since otherwise log_prob is assumed to have blobs
@@ -403,14 +410,15 @@ def lnlike_gaussian_poisson_mizi(
 
 
 def lnlike_gaussian_mizi(
-        theta, Nobs_mizi,
-        log10_m200m_bin_edges,
-        z_bin_edges,
-        cosmo_fixed,
-        A_survey=2500,
-        MassFunc=MassFuncTinker08,
-        pool=None,
-        **kwargs
+    theta,
+    Nobs_mizi,
+    log10_m200m_bin_edges,
+    z_bin_edges,
+    cosmo_fixed,
+    A_survey=2500,
+    MassFunc=MassFuncTinker08,
+    pool=None,
+    **kwargs,
 ):
     """
     Gaussian likelihood calculation
@@ -454,28 +462,179 @@ def lnlike_gaussian_mizi(
     # other parameters should be updated in the astropy FlatwCDM object
     # through cosmo_params
     cosmo = cosmology(
-        omega_m=omega_m, sigma_8=sigma_8, w0=w0,
-        omega_b=omega_b, h=h, n_s=n_s
+        omega_m=omega_m, sigma_8=sigma_8, w0=w0, omega_b=omega_b, h=h, n_s=n_s
     )
 
     N_mizi = abundance.N_in_bins(
         z_bin_edges=z_bin_edges,
-        m200m_bin_edges=10**log10_m200m_bin_edges,
-        n_z=50, n_m=100,
-        cosmo=cosmo, A_survey=A_survey, MassFunc=MassFunc,
-        pool=pool
+        m200m_bin_edges=10 ** log10_m200m_bin_edges,
+        n_z=50,
+        n_m=100,
+        cosmo=cosmo,
+        A_survey=A_survey,
+        MassFunc=MassFunc,
+        pool=pool,
     )
 
     # need to return a float since otherwise log_prob is assumed to have blobs
-    return -float(np.sum((Nobs_mizi - N_mizi)**2 / (2 * N_mizi) + 0.5 * np.log(N_mizi)))
+    return -float(
+        np.sum((Nobs_mizi - N_mizi) ** 2 / (2 * N_mizi) + 0.5 * np.log(N_mizi))
+    )
+
+
+def sample_gaussian_likelihood(
+    fnames,
+    method,
+    lnlike,
+    z_min,
+    z_max,
+    m200m_min,
+    theta_init,
+    bounds,
+    cosmo_fixed,
+    z_bins,
+    log10_m200m_bins,
+    nwalkers=32,
+    nsamples=5000,
+    discard=100,
+    out_q=None,
+    pool=None,
+):
+    """Sample the likelihood
+
+    Parameters
+    ----------
+    fnames : list
+        list of filenames
+    method : str
+        mass fitting method
+    lnlike : str
+        likelihood to use: gaussian or mixed
+    z_min : float
+        minimum redshift in the sample
+    z_max : float
+        maximum redshift in the sample
+    m200m_min : float
+        minimum halo mass in the sample
+    theta_init : list of lists
+        values of initial cosmology guess for each fname in order
+        [omega_m, sigma_8, w0, omega_b, h, n_s]
+    bounds : (ndim, 2) array-like
+        array containing lower and upper bounds for each dimension
+    cosmo_fixed : list of dict keys
+        cosmological parameters that are kept fixed
+        ['omega_m', 'sigma_8', 'w0', 'omega_b', 'h', 'n_s']
+    z_bins : int
+        number of bins for z
+    log10_m200m_bins : int
+        number bins for log10_m200m
+    nwalkers : int
+        number of walkers to use in MCMC
+    nsamples : int
+        number of samples for each walker
+    discard : int
+        burn-in of the chains
+    out_q : Queue() instance or None
+        queue to put results in
+        [Default: None]
+    pool : Pool object
+        optional pool to use for EnsembleSampler
+
+    Returns
+    -------
+    - (samples, log_probs) to out_q if not None
+    """
+    bounds = np.atleast_2d(bounds)
+    ndim = bounds.shape[0]
+    maps = np.empty((0, ndim), dtype=float)
+
+    lnlike_options = {
+        "gaussian": lnlike_gaussian_mizi,
+        "mixed": lnlike_gaussian_poisson_mizi,
+    }
+    res_options = {"gaussian": "res_gaussian", "mixed": "res_gaussian_poisson"}
+
+    for idx, fname in enumerate(fnames):
+        with asdf.open(fname, copy_arrays=True) as af:
+            # load possibly referenced values
+            af.resolve_references()
+            m200m_sample = af[method]["m200m_sample"][:]
+            selection = af[method]["selection"][:]
+            z_sample = af["z_sample"][selection]
+            A_survey = af["A_survey"]
+
+            if z_min < z_sample.min():
+                z_min_sample = z_sample.min()
+            else:
+                z_min_sample = z_min
+            if z_max > z_sample.max():
+                z_max_sample = z_sample.max()
+            else:
+                z_max_sample = z_max
+            if m200m_min < m200m_sample.min():
+                m200m_min_sample = m200m_sample.min()
+            else:
+                m200m_min_sample = m200m_min
+
+            selection = (
+                (z_sample > z_min_sample)
+                & (z_sample < z_max_sample)
+                & (m200m_sample > m200m_min_sample)
+            )
+            Nobs_mizi, z_edges, log10_m200m_edges = np.histogram2d(
+                x=z_sample[selection],
+                y=np.log10(m200m_sample[selection]),
+                bins=[z_bins, log10_m200m_bins],
+            )
+
+            kwargs = {
+                "Nobs_mizi": Nobs_mizi,
+                "z_bin_edges": z_edges,
+                "log10_m200m_bin_edges": log10_m200m_edges,
+                "A_survey": A_survey,
+                "theta_init": theta_init,
+                "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
+                "m200m_min": m200m_min_sample,
+                "z_min": z_min_sample,
+                "z_max": z_max_sample,
+            }
+            # # added for loading previous result if stopped by error
+            # if np.round(np.log10(kwargs['m200m_min']), 2) in af[method].keys():
+            #     fname_map = af[method][np.round(np.log10(kwargs['m200m_min']), 2)]['res_gaussian']['x']
+
+        sampler = emcee.EnsembleSampler(
+            nwalkers, ndim, lnlike_options[lnlike], kwargs=kwargs, pool=pool
+        )
+        pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
+        t1 = time.time()
+        sampler.run_mcmc(pos, nsamples, progress=True)
+        t2 = time.time()
+
+        samples = sampler.get_chain(flatten=True, discard=discard).reshape(-1, ndim)
+        log_probs = sampler.get_log_probs(flatten=True, discard=discard).reshape(-1)
+
+        print(f"{os.getpid()} (took {t2 - t1:.2f}s)")
+
+    if out_q is not None:
+        out_q.put([os.getpid(), [samples, log_probs]])
+
+    else:
+        return (samples, log_probs)
 
 
 def fit_maps_gaussian(
-        fnames, method, lnlike,
-        z_min, z_max, m200m_min,
-        theta_init, bounds, cosmo_fixed,
-        z_bins, log10_m200m_bins,
-        out_q=None
+    fnames,
+    method,
+    lnlike,
+    z_min,
+    z_max,
+    m200m_min,
+    theta_init,
+    bounds,
+    cosmo_fixed,
+    z_bins,
+    log10_m200m_bins,
+    out_q=None,
 ):
     """Fit the maximum a posteriori probability for the halo samples
     saved in fnames.
@@ -496,12 +655,12 @@ def fit_maps_gaussian(
         minimum halo mass in the sample
     theta_init : list of lists
         values of initial cosmology guess for each fname in order
-        [sigma_8, omega_m, w0, omega_b, h, n_s]
+        [omega_m, sigma_8, w0, omega_b, h, n_s]
     bounds : (ndim, 2) array-like
         array containing lower and upper bounds for each dimension
     cosmo_fixed : list of dict keys
         cosmological parameters that are kept fixed
-        [sigma_8, 'omega_m', 'w0', 'omega_b', 'h', 'n_s']
+        ['omega_m', 'sigma_8', 'w0', 'omega_b', 'h', 'n_s']
     z_bins : int
         number of bins for z
     log10_m200m_bins : int
@@ -520,22 +679,19 @@ def fit_maps_gaussian(
     maps = np.empty((0, ndim), dtype=float)
 
     lnlike_options = {
-        'gaussian': lnlike_gaussian_mizi,
-        'mixed': lnlike_gaussian_poisson_mizi
+        "gaussian": lnlike_gaussian_mizi,
+        "mixed": lnlike_gaussian_poisson_mizi,
     }
-    res_options = {
-        'gaussian': 'res_gaussian',
-        'mixed': 'res_gaussian_poisson'
-    }
+    res_options = {"gaussian": "res_gaussian", "mixed": "res_gaussian_poisson"}
 
     for idx, fname in enumerate(fnames):
         with asdf.open(fname, copy_arrays=True) as af:
             # load possibly referenced values
             af.resolve_references()
-            m200m_sample = af[method]['m200m_sample'][:]
-            selection = af[method]['selection'][:]
-            z_sample = af['z_sample'][selection]
-            A_survey = af['A_survey']
+            m200m_sample = af[method]["m200m_sample"][:]
+            selection = af[method]["selection"][:]
+            z_sample = af["z_sample"][selection]
+            A_survey = af["A_survey"]
 
             if z_min < z_sample.min():
                 z_min_sample = z_sample.min()
@@ -551,7 +707,8 @@ def fit_maps_gaussian(
                 m200m_min_sample = m200m_min
 
             selection = (
-                (z_sample > z_min_sample) & (z_sample < z_max_sample)
+                (z_sample > z_min_sample)
+                & (z_sample < z_max_sample)
                 & (m200m_sample > m200m_min_sample)
             )
             Nobs_mizi, z_edges, log10_m200m_edges = np.histogram2d(
@@ -569,54 +726,51 @@ def fit_maps_gaussian(
                 "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
                 "m200m_min": m200m_min_sample,
                 "z_min": z_min_sample,
-                "z_max": z_max_sample
+                "z_max": z_max_sample,
             }
             # # added for loading previous result if stopped by error
             # if np.round(np.log10(kwargs['m200m_min']), 2) in af[method].keys():
             #     fname_map = af[method][np.round(np.log10(kwargs['m200m_min']), 2)]['res_gaussian']['x']
 
-
         def nll(theta, kwargs):
-            return -lnlike_options[lnlike](
-                theta=theta, **kwargs
-            )
+            return -lnlike_options[lnlike](theta=theta, **kwargs)
 
         t1 = time.time()
         res = opt.minimize(
-            nll,
-            theta_init[idx],
-            args=(kwargs,),
-            bounds=bounds,
-            method="L-BFGS-B"
+            nll, theta_init[idx], args=(kwargs,), bounds=bounds, method="L-BFGS-B"
         )
         t2 = time.time()
 
-        print(f"{os.getpid()} (took {t2 - t1:.2f}s): succes = {res.success} x = {res.x} nfev = {res.nfev}")
+        print(
+            f"{os.getpid()} (took {t2 - t1:.2f}s): succes = {res.success} x = {res.x} nfev = {res.nfev}"
+        )
         maps = np.concatenate([maps, res.x.reshape(-1, ndim)], axis=0)
 
         # append results to asdf file
         with asdf.open(fname, mode="rw") as af:
             # check whether this is the first time this mass cut has been fit
-            if np.round(np.log10(kwargs['m200m_min']), 2) not in af[method].keys():
-                af.tree[method][np.round(np.log10(kwargs['m200m_min']), 2)] = {}
-            af.tree[method][np.round(np.log10(kwargs['m200m_min']), 2)][res_options[lnlike]] = {
-                'theta_init': theta_init[idx],
-                'fun': res.fun,
-                'jac': res.jac,
-                'message': res.message,
-                'nfev': res.nfev,
-                'nit': res.nit,
-                'njev': res.njev,
-                'status': res.status,
-                'success': res.success,
-                'x': res.x,
-                'm200m_min': kwargs['m200m_min'],
-                'z_min': kwargs['z_min'],
-                'z_max': kwargs['z_max'],
-                'A_survey': kwargs['A_survey'],
-                'cosmo_fixed': kwargs['cosmo_fixed'],
-                'z_bin_edges': z_edges,
-                'log10_m200m_bin_edges': log10_m200m_edges,
+            if np.round(np.log10(kwargs["m200m_min"]), 2) not in af[method].keys():
+                af.tree[method][np.round(np.log10(kwargs["m200m_min"]), 2)] = {}
+            af.tree[method][np.round(np.log10(kwargs["m200m_min"]), 2)][
+                res_options[lnlike]
+            ] = {
+                "theta_init": theta_init[idx],
+                "fun": res.fun,
+                "jac": res.jac,
+                "message": res.message,
+                "nfev": res.nfev,
+                "nit": res.nit,
+                "njev": res.njev,
+                "status": res.status,
+                "success": res.success,
+                "x": res.x,
+                "m200m_min": kwargs["m200m_min"],
+                "z_min": kwargs["z_min"],
+                "z_max": kwargs["z_max"],
+                "A_survey": kwargs["A_survey"],
+                "cosmo_fixed": kwargs["cosmo_fixed"],
+                "z_bin_edges": z_edges,
+                "log10_m200m_bin_edges": log10_m200m_edges,
             }
             af.update()
 
@@ -628,23 +782,24 @@ def fit_maps_gaussian(
 
 
 def fit_maps_gaussian_mp(
-        fnames, method,
-        z_min, z_max, m200m_min,
-        bounds,
-        lnlike='gaussian',
-        theta_init=[
-            0.315,
-            0.811,
-            -1.0,
-        ],
-        cosmo_fixed=[
-            "omega_b",
-            "h",
-            "n_s"
-        ],
-        z_bins=8, log10_m200m_bins=20,
-        rng=default_rng(0),
-        n_cpus=None):
+    fnames,
+    method,
+    z_min,
+    z_max,
+    m200m_min,
+    bounds,
+    lnlike="gaussian",
+    theta_init=[
+        0.315,
+        0.811,
+        -1.0,
+    ],
+    cosmo_fixed=["omega_b", "h", "n_s"],
+    z_bins=8,
+    log10_m200m_bins=20,
+    rng=default_rng(0),
+    n_cpus=None,
+):
     """Fit the maximum a posteriori probability for the halo samples
     saved in fnames.
 
@@ -682,23 +837,22 @@ def fit_maps_gaussian_mp(
     -------
     (n, ndim) array with MAP for each fname
     """
-    method_options = [
-        'WL', 'WL_min', 'WL_max',
-        'WL_c', 'WL_c_min', 'WL_c_max', 'true'
-    ]
+    method_options = ["WL", "WL_min", "WL_max", "WL_c", "WL_c_min", "WL_c_max", "true"]
     if method not in method_options:
         raise ValueError(f"{method} not in {method_options}")
 
-    lnlike_options = ['gaussian', 'mixed']
+    lnlike_options = ["gaussian", "mixed"]
     if lnlike not in lnlike_options:
-        raise ValueError(f'lnlike should be one of {lnlike_options}')
+        raise ValueError(f"lnlike should be one of {lnlike_options}")
 
     if bounds.shape[0] != len(theta_init):
         raise ValueError(f"bounds and theta_init need to have same dimension.")
 
     theta_init = np.atleast_1d(theta_init)
     # add random error to theta_init to avoid exact result
-    theta_init = theta_init[None, :] + 1e-3 * rng.normal(size=(len(fnames), len(theta_init)))
+    theta_init = theta_init[None, :] + 1e-3 * rng.normal(
+        size=(len(fnames), len(theta_init))
+    )
 
     # set up process management
     manager = Manager()
@@ -714,12 +868,19 @@ def fit_maps_gaussian_mp(
         process = Process(
             target=fit_maps_gaussian,
             args=(
-                fns, method, lnlike,
-                z_min, z_max, m200m_min,
-                theta, bounds, cosmo_fixed,
-                z_bins, log10_m200m_bins,
+                fns,
+                method,
+                lnlike,
+                z_min,
+                z_max,
+                m200m_min,
+                theta,
+                bounds,
+                cosmo_fixed,
+                z_bins,
+                log10_m200m_bins,
                 out_q,
-            )
+            ),
         )
 
         procs.append(process)
@@ -743,34 +904,40 @@ def fit_maps_gaussian_mp(
 
 
 def generate_maps_file(
-        A_survey='15k',
-        z_min='0p1',
-        z_max='4',
-        m200m_min='13p76',
-        cosmo='planck2019',
-        res=['res_gaussian'],
-        methods=['WL', 'WL_c', 'true'],
-        mcuts=[14.0, 14.25, 14.5],
-        fname_append=""):
+    A_survey="15k",
+    z_min="0p1",
+    z_max="4",
+    m200m_min="13p76",
+    cosmo="planck2019",
+    res=["res_gaussian"],
+    methods=["WL", "WL_c", "true"],
+    mcuts=[14.0, 14.25, 14.5],
+    fname_append="",
+):
     """Consolidate all the MAPs from fnames into a single file."""
     fnames = mock_sample.get_fnames(
-        A_survey=A_survey, z_min=z_min, z_max=z_max,
-        m200m_min=m200m_min, method=None, cosmo=cosmo)
+        A_survey=A_survey,
+        z_min=z_min,
+        z_max=z_max,
+        m200m_min=m200m_min,
+        method=None,
+        cosmo=cosmo,
+    )
 
     maps = {}
     # load general info
     with asdf.open(fnames[0], copy_arrays=True, lazy_load=False) as af:
-        maps['A_survey'] = af['A_survey']
-        maps['log10_m_min'] = af['log10_m_min']
-        maps['log10_m_max'] = af['log10_m_max']
-        maps['z_min'] = af['z_min']
-        maps['z_max'] = af['z_max']
-        maps['h'] = af['h']
-        maps['n_s'] = af['n_s']
-        maps['w0'] = af['w0']
-        maps['omega_m'] = af['omega_m']
-        maps['omega_b'] = af['omega_b']
-        maps['sigma_8'] = af['sigma_8']
+        maps["A_survey"] = af["A_survey"]
+        maps["log10_m_min"] = af["log10_m_min"]
+        maps["log10_m_max"] = af["log10_m_max"]
+        maps["z_min"] = af["z_min"]
+        maps["z_max"] = af["z_max"]
+        maps["h"] = af["h"]
+        maps["n_s"] = af["n_s"]
+        maps["w0"] = af["w0"]
+        maps["omega_m"] = af["omega_m"]
+        maps["omega_b"] = af["omega_b"]
+        maps["sigma_8"] = af["sigma_8"]
 
         # only load methods that are in fnames
         methods_in_files = [m for m in methods if m in af.keys()]
@@ -781,21 +948,21 @@ def generate_maps_file(
                 if mcut not in af[method].keys():
                     continue
                 maps[method][mcut] = {}
-                maps[method][mcut]['z_min'] = af[method][mcut]['z_min']
-                maps[method][mcut]['z_max'] = af[method][mcut]['z_max']
-                maps[method][mcut]['m200m_min'] = af[method][mcut]['m200m_min']
-                maps[method][mcut]['cosmo_fixed'] = af[method][mcut]['cosmo_fixed']
+                maps[method][mcut]["z_min"] = af[method][mcut]["z_min"]
+                maps[method][mcut]["z_max"] = af[method][mcut]["z_max"]
+                maps[method][mcut]["m200m_min"] = af[method][mcut]["m200m_min"]
+                maps[method][mcut]["cosmo_fixed"] = af[method][mcut]["cosmo_fixed"]
 
                 for r in res:
                     if r not in af[method][mcut].keys():
                         continue
                     maps[method][mcut][r] = {}
-                    maps[method][mcut][r]['maps'] = []
-                    maps[method][mcut][r]['fun'] = []
-                    maps[method][mcut][r]['success'] = []
+                    maps[method][mcut][r]["maps"] = []
+                    maps[method][mcut][r]["fun"] = []
+                    maps[method][mcut][r]["success"] = []
 
     # now go through the different mass cuts for each method
-    for fname in tqdm(fnames, desc='Loading files'):
+    for fname in tqdm(fnames, desc="Loading files"):
         with asdf.open(fname, copy_arrays=True, lazy_load=False) as af:
             for method in methods_in_files:
                 for mcut in maps[method].keys():
@@ -803,28 +970,40 @@ def generate_maps_file(
                         if r not in maps[method][mcut].keys():
                             continue
                         try:
-                            maps[method][mcut][r]['maps'].append(af[method][mcut][r]['x'])
-                            maps[method][mcut][r]['fun'].append(af[method][mcut][r]['fun'])
-                            maps[method][mcut][r]['success'].append(af[method][mcut][r]['success'])
+                            maps[method][mcut][r]["maps"].append(
+                                af[method][mcut][r]["x"]
+                            )
+                            maps[method][mcut][r]["fun"].append(
+                                af[method][mcut][r]["fun"]
+                            )
+                            maps[method][mcut][r]["success"].append(
+                                af[method][mcut][r]["success"]
+                            )
                         except Exception as e:
-                            print(f'{fname} failed with Exception {e}')
+                            print(f"{fname} failed with Exception {e}")
 
     for method in methods_in_files:
         for mcut in maps[method].keys():
             for r in res:
                 if r not in maps[method][mcut].keys():
                     continue
-                maps[method][mcut][r]['maps'] = np.atleast_2d(maps[method][mcut][r]['maps'])
-                maps[method][mcut][r]['fun'] = np.atleast_1d(maps[method][mcut][r]['fun'])
-                maps[method][mcut][r]['success'] = np.atleast_1d(maps[method][mcut][r]['success'])
+                maps[method][mcut][r]["maps"] = np.atleast_2d(
+                    maps[method][mcut][r]["maps"]
+                )
+                maps[method][mcut][r]["fun"] = np.atleast_1d(
+                    maps[method][mcut][r]["fun"]
+                )
+                maps[method][mcut][r]["success"] = np.atleast_1d(
+                    maps[method][mcut][r]["success"]
+                )
 
     maps_fname_base = mock_sample.gen_fname(
-        A_survey=A_survey, z_min=z_min, z_max=z_max,
-        m200m_min=m200m_min, cosmo=cosmo)
+        A_survey=A_survey, z_min=z_min, z_max=z_max, m200m_min=m200m_min, cosmo=cosmo
+    )
 
     with asdf.AsdfFile(maps) as af:
-        if fname_append != '':
-            fname_append = f'_{fname_append}'
-        af.write_to(f'{maps_fname_base}_maps{fname_append}.asdf')
+        if fname_append != "":
+            fname_append = f"_{fname_append}"
+        af.write_to(f"{maps_fname_base}_maps{fname_append}.asdf")
 
     return maps
