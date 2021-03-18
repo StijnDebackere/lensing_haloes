@@ -208,7 +208,10 @@ def sample_poisson_likelihood(
             pool=pool,
             backend=emcee.backends.HDFBackend(
                 filename=str(Path(fname).with_suffix(".chains.hdf5")),
-                name=f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/mcmc/',
+                name=(
+                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                    f'/poisson/mcmc/'
+                ),
             ),
         )
         pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
@@ -663,7 +666,7 @@ def sample_gaussian_likelihood(
         "gaussian": lnlike_gaussian_mizi,
         "mixed": lnlike_gaussian_poisson_mizi,
     }
-    res_options = {"gaussian": "res_gaussian", "mixed": "res_gaussian_poisson"}
+    res_options = {"gaussian": "gaussian", "mixed": "gaussian_poisson"}
 
     for idx, fname in enumerate(fnames):
         with asdf.open(fname, copy_arrays=True) as af:
@@ -721,7 +724,10 @@ def sample_gaussian_likelihood(
             pool=pool,
             backend=emcee.backends.HDFBackend(
                 filename=str(Path(fname).with_suffix(".chains.hdf5")),
-                name=f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/mcmc/',
+                name=(
+                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                    f'/{res_options[lnlike]}/mcmc/'
+                ),
             ),
         )
         pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
