@@ -210,7 +210,7 @@ def sample_poisson_likelihood(
                 filename=str(Path(fname).with_suffix(".chains.hdf5")),
                 name=(
                     f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
-                    f"/poisson/mcmc/{datetime.now().strftime('%Y%m%d_%H:%m')}"
+                    f"/poisson/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
                 ),
             ),
         )
@@ -738,7 +738,7 @@ def sample_gaussian_likelihood(
                 filename=str(Path(fname).with_suffix(".chains.hdf5")),
                 name=(
                     f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
-                    f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%m')}"
+                    f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
                 ),
             ),
         )
