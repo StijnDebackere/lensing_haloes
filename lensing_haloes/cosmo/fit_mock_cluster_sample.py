@@ -450,6 +450,7 @@ def lnlike_gaussian_poisson_mizi(
     cosmo_fixed,
     A_survey=2500,
     MassFunc=MassFuncTinker08,
+    sigma_log10_mobs=None,
     pool=None,
     **kwargs,
 ):
@@ -482,6 +483,8 @@ def lnlike_gaussian_poisson_mizi(
         area of survey in square degrees
     MassFunc : pyccl.halos.hmfunc.MassFunc object
         mass function to use
+    sigma_log10_mobs : float
+        uncertainty on the mass
     pool : multiprocessing pool or None
 
     Returns
@@ -501,6 +504,7 @@ def lnlike_gaussian_poisson_mizi(
     N_mizi = abundance.N_in_bins(
         z_bin_edges=z_bin_edges,
         m200m_bin_edges=10 ** log10_m200m_bin_edges,
+        sigma_log10_mobs=sigma_log10_mobs,
         n_z=50,
         n_m=100,
         cosmo=cosmo,
@@ -531,6 +535,7 @@ def lnlike_gaussian_mizi(
     cosmo_fixed,
     A_survey=2500,
     MassFunc=MassFuncTinker08,
+    sigma_log10_mobs=None,
     pool=None,
     **kwargs,
 ):
@@ -563,6 +568,8 @@ def lnlike_gaussian_mizi(
         area of survey in square degrees
     MassFunc : pyccl.halos.hmfunc.MassFunc object
         mass function to use
+    sigma_log10_mobs : float
+        uncertainty on the mass
     pool : multiprocessing pool or None
 
     Returns
@@ -582,6 +589,7 @@ def lnlike_gaussian_mizi(
     N_mizi = abundance.N_in_bins(
         z_bin_edges=z_bin_edges,
         m200m_bin_edges=10 ** log10_m200m_bin_edges,
+        sigma_log10_mobs=sigma_log10_mobs,
         n_z=50,
         n_m=100,
         cosmo=cosmo,
@@ -608,6 +616,7 @@ def sample_gaussian_likelihood(
     cosmo_fixed,
     z_bins,
     log10_m200m_bins,
+    sigma_log10_mobs,
     nwalkers=32,
     nsamples=5000,
     discard=100,
@@ -642,6 +651,8 @@ def sample_gaussian_likelihood(
         number of bins for z
     log10_m200m_bins : int
         number bins for log10_m200m
+    sigma_log10_mobs : float
+        uncertainty on the mass
     nwalkers : int
         number of walkers to use in MCMC
     nsamples : int
@@ -711,6 +722,7 @@ def sample_gaussian_likelihood(
                 "m200m_min": m200m_min_sample,
                 "z_min": z_min_sample,
                 "z_max": z_max_sample,
+                "sigma_log10_mobs": sigma_log10_mobs,
             }
             # # added for loading previous result if stopped by error
             # if np.round(np.log10(kwargs['m200m_min']), 2) in af[method].keys():
