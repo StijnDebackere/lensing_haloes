@@ -355,7 +355,7 @@ def N_in_bins(
             log10_m200m_max=log10_m200m_max,
             log10_mobs_min=log10_mobs_min,
             log10_mobs_max=log10_mobs_max,
-            sigma_log10_obs=sigma_log10_mobs,
+            sigma_log10_mobs=sigma_log10_mobs,
             n_m=n_m,
             cosmo=cosmo,
             A_survey=A_survey,
