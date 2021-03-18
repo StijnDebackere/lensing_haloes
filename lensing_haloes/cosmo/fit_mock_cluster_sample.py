@@ -2,6 +2,7 @@
 i.e. the cluster likelihood, finding the MAP of the cluster sample,
 ...
 """
+from datetime import datetime
 from multiprocessing import Process, Manager
 from pathlib import Path
 import os
@@ -187,8 +188,7 @@ def sample_poisson_likelihood(
             A_survey = af["A_survey"]
 
             selection = (
-                (z_sample > z_min) & (z_sample < z_max)
-                & (m200m_sample > m200m_min)
+                (z_sample > z_min) & (z_sample < z_max) & (m200m_sample > m200m_min)
             )
             kwargs = {
                 "m200m_min": m200m_min,
@@ -210,7 +210,7 @@ def sample_poisson_likelihood(
                 filename=str(Path(fname).with_suffix(".chains.hdf5")),
                 name=(
                     f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
-                    f'/poisson/mcmc/'
+                    f"/poisson/mcmc/{datetime.now().strftime('%Y%m%d_%H:%m')}"
                 ),
             ),
         )
@@ -738,7 +738,7 @@ def sample_gaussian_likelihood(
                 filename=str(Path(fname).with_suffix(".chains.hdf5")),
                 name=(
                     f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
-                    f'/{res_options[lnlike]}/mcmc/'
+                    f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%m')}"
                 ),
             ),
         )
