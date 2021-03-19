@@ -128,6 +128,7 @@ def sample_poisson_likelihood(
     theta_init,
     bounds,
     cosmo_fixed,
+    mcmc_name=None,
     nwalkers=32,
     nsamples=5000,
     discard=100,
@@ -158,6 +159,8 @@ def sample_poisson_likelihood(
     cosmo_fixed : list of dict keys
         cosmological parameters that are kept fixed
         ['omega_m', 'sigma_8', 'w0', 'omega_b', 'h', 'n_s']
+    mcmc_name : str or None
+        group to save MCMC samples to
     nwalkers : int
         number of walkers to use in MCMC
     nsamples : int
@@ -199,6 +202,18 @@ def sample_poisson_likelihood(
                 "A_survey": A_survey,
                 "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
             }
+        if mcmc_name is None:
+            name = (
+                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                    f"/poisson/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
+                )
+            pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
+        else:
+            name = (
+                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                    f"/poisson/mcmc/{mcmc_name}"
+                )
+            pos = None
 
         sampler = emcee.EnsembleSampler(
             nwalkers,
@@ -208,13 +223,9 @@ def sample_poisson_likelihood(
             pool=pool,
             backend=emcee.backends.HDFBackend(
                 filename=str(Path(fname).with_suffix(".chains.hdf5")),
-                name=(
-                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
-                    f"/poisson/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
-                ),
+                name=name,
             ),
         )
-        pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
         t1 = time.time()
         sampler.run_mcmc(pos, nsamples, progress=True)
         t2 = time.time()
@@ -617,6 +628,7 @@ def sample_gaussian_likelihood(
     z_bins,
     log10_m200m_bins,
     sigma_log10_mobs,
+    mcmc_name=None,
     nwalkers=32,
     nsamples=5000,
     discard=100,
@@ -653,6 +665,8 @@ def sample_gaussian_likelihood(
         number bins for log10_m200m
     sigma_log10_mobs : float
         uncertainty on the mass
+    mcmc_name : str or None
+        group to save MCMC samples to
     nwalkers : int
         number of walkers to use in MCMC
     nsamples : int
@@ -728,6 +742,19 @@ def sample_gaussian_likelihood(
             # if np.round(np.log10(kwargs['m200m_min']), 2) in af[method].keys():
             #     fname_map = af[method][np.round(np.log10(kwargs['m200m_min']), 2)]['res_gaussian']['x']
 
+        if mcmc_name is None:
+            name = (
+                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                    f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
+                )
+            pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
+        else:
+            name = (
+                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                    f"/{res_options[lnlike]}/mcmc/{mcmc_name}"
+                )
+            pos = None
+
         sampler = emcee.EnsembleSampler(
             nwalkers,
             ndim,
@@ -736,13 +763,9 @@ def sample_gaussian_likelihood(
             pool=pool,
             backend=emcee.backends.HDFBackend(
                 filename=str(Path(fname).with_suffix(".chains.hdf5")),
-                name=(
-                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
-                    f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
-                ),
+                name=name,
             ),
         )
-        pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
         t1 = time.time()
         sampler.run_mcmc(pos, nsamples, progress=True)
         t2 = time.time()
