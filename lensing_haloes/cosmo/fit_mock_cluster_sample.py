@@ -747,8 +747,8 @@ def sample_gaussian_likelihood(
         sampler.run_mcmc(pos, nsamples, progress=True)
         t2 = time.time()
 
-        samples = sampler.get_chain(flatten=True, discard=discard).reshape(-1, ndim)
-        log_probs = sampler.get_log_probs(flatten=True, discard=discard).reshape(-1)
+        samples = sampler.get_chain(flat=True, discard=discard).reshape(-1, ndim)
+        log_probs = sampler.get_log_probs(flat=True, discard=discard).reshape(-1)
 
         print(f"{os.getpid()} (took {t2 - t1:.2f}s)")
 
