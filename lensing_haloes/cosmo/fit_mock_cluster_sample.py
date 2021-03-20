@@ -231,7 +231,7 @@ def sample_poisson_likelihood(
         t2 = time.time()
 
         samples = sampler.get_chain()[discard:].reshape(-1, ndim)
-        log_probs = sampler.get_log_probs()[discard:].reshape(-1)
+        log_probs = sampler.get_log_prob()[discard:].reshape(-1)
 
         print(f"{os.getpid()} (took {t2 - t1:.2f}s)")
 
@@ -771,7 +771,7 @@ def sample_gaussian_likelihood(
         t2 = time.time()
 
         samples = sampler.get_chain(flat=True, discard=discard).reshape(-1, ndim)
-        log_probs = sampler.get_log_probs(flat=True, discard=discard).reshape(-1)
+        log_probs = sampler.get_log_prob(flat=True, discard=discard).reshape(-1)
 
         print(f"{os.getpid()} (took {t2 - t1:.2f}s)")
 
