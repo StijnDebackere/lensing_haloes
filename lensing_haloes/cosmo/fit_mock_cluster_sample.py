@@ -754,7 +754,7 @@ def sample_gaussian_likelihood(
                     f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
                     f"/{res_options[lnlike]}/mcmc/{mcmc_name}"
                 )
-            with h5py.File(str(Path(fname).with_suffix(".chains.hdf5"))) as f:
+            with h5py.File(str(Path(fname).with_suffix(".chains.hdf5")), 'r') as f:
                 items = []
                 f.visit(items.append)
                 if name in items:
