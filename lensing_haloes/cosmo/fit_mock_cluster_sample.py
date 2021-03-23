@@ -11,6 +11,7 @@ import time
 import asdf
 import emcee
 from george import kernels
+import h5py
 import numpy as np
 from numpy.random import default_rng
 from pyccl.halos.hmfunc import MassFuncTinker08
@@ -753,7 +754,13 @@ def sample_gaussian_likelihood(
                     f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
                     f"/{res_options[lnlike]}/mcmc/{mcmc_name}"
                 )
-            pos = None
+            with h5py.File(str(Path(fname).with_suffix(".chains.hdf5"))) as f:
+                items = []
+                f.visit(items.append)
+                if name in items:
+                    pos = None
+                else:
+                    pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
 
         sampler = emcee.EnsembleSampler(
             nwalkers,
