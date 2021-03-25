@@ -31,6 +31,21 @@ from pdb import set_trace
 LN_SQRT_2PI = np.log(np.sqrt(2 * np.pi))
 
 
+def log_prior(theta, bounds):
+    if within_bounds(theta, bounds):
+        return 0.0
+    return - np.inf
+
+
+def log_prob(theta, **kwargs):
+    bounds = kwargs.pop('bounds')
+    lnlike = kwargs.pop('lnlike')
+    lp = log_prior(theta, bounds)
+    if not np.isfinite(lp):
+        return -np.inf
+    return lp + lnlike(theta, **kwargs)
+
+
 def lnlike_poisson_mizi(
     theta,
     m200m_sample,
@@ -728,6 +743,8 @@ def sample_gaussian_likelihood(
             )
 
             kwargs = {
+                "lnlike": lnlike_options[lnlike],
+                "bounds": bounds,
                 "Nobs_mizi": Nobs_mizi,
                 "z_bin_edges": z_edges,
                 "log10_m200m_bin_edges": log10_m200m_edges,
@@ -761,17 +778,6 @@ def sample_gaussian_likelihood(
                     pos = None
                 else:
                     pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
-
-        def log_prior(theta, bounds):
-            if within_bounds(theta, bounds):
-                return 0.0
-            return -np.inf
-
-        def log_prob(theta, bounds, **kwargs):
-            lp = log_prior(theta, bounds)
-            if not np.isfinite(lp):
-                return -np.inf
-            return lp + lnlike_options[lnlike](theta, **kwargs)
 
         sampler = emcee.EnsembleSampler(
             nwalkers,
