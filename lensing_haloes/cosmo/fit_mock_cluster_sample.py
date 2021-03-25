@@ -22,7 +22,7 @@ from tqdm import tqdm
 import lensing_haloes.cosmo.generate_mock_cluster_sample as mock_sample
 from lensing_haloes.cosmo.cosmo import cosmology
 import lensing_haloes.halo.abundance as abundance
-from lensing_haloes.util.tools import chunks
+from lensing_haloes.util.tools import chunks, within_bounds
 
 from pdb import set_trace
 
@@ -762,10 +762,21 @@ def sample_gaussian_likelihood(
                 else:
                     pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
 
+        def log_prior(theta, bounds):
+            if within_bounds(theta, bounds):
+                return 0.0
+            return -np.inf
+
+        def log_prob(theta, bounds, **kwargs):
+            lp = log_prior(theta, bounds)
+            if not np.isfinite(lp):
+                return -np.inf
+            return lp + lnlike_options[lnlike](theta, **kwargs)
+
         sampler = emcee.EnsembleSampler(
             nwalkers,
             ndim,
-            lnlike_options[lnlike],
+            log_prob,
             kwargs=kwargs,
             pool=pool,
             backend=emcee.backends.HDFBackend(

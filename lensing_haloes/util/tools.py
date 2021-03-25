@@ -54,6 +54,29 @@ def vectorize(*args, **kwargs):
     return vectorize_wrapper
 
 
+def within_bounds(x, bounds):
+    """Check whether values of x are within bounds.
+
+    Parameters
+    ----------
+    x : (n, ndim) array
+        values
+    bounds : (ndim, 2) array
+        bounds
+
+    Returns
+    -------
+    within_bounds : (n,) array
+        x is within bounds
+    """
+    ndim = x.shape[-1]
+    if bounds.shape[0] != ndim:
+        raise ValueError(f'axis 0 of bounds should match ndim={ndim}')
+    diff = x.reshape(-1, ndim, 1) - bounds.reshape(1, ndim, 2)
+    out_of_bounds = ((diff[..., 0] < 0) | (diff[..., 1] > 0)).any(axis=-1)
+    return ~out_of_bounds
+
+
 def open_or_create_asdf(fname):
     """Open AsdfFile with fname or create it."""
     try:
