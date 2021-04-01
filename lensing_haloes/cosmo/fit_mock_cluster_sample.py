@@ -477,9 +477,10 @@ def lnlike_gaussian_poisson_mizi(
     cosmo_fixed,
     A_survey=2500,
     MassFunc=MassFuncTinker08,
-    sigma_log10_mobs=None,
     pool=None,
-    **kwargs,
+    sigma_log10_mobs=None,
+    sigma_log10_mobs_dist=None,
+    **sigma_log10_mobs_dist_kwargs
 ):
     """
     Mixed likelihood with Gaussian expectation value
@@ -510,9 +511,12 @@ def lnlike_gaussian_poisson_mizi(
         area of survey in square degrees
     MassFunc : pyccl.halos.hmfunc.MassFunc object
         mass function to use
-    sigma_log10_mobs : float
-        uncertainty on the mass
     pool : multiprocessing pool or None
+    sigma_log10_mobs : array-like or float
+        uncertainty range on the mass
+    sigma_log10_mobs_dist : callable
+        distribution for sigma_log10_mobs
+        [Default : None]
 
     Returns
     -------
@@ -531,13 +535,15 @@ def lnlike_gaussian_poisson_mizi(
     N_mizi = abundance.N_in_bins(
         z_bin_edges=z_bin_edges,
         m200m_bin_edges=10 ** log10_m200m_bin_edges,
-        sigma_log10_mobs=sigma_log10_mobs,
         n_z=50,
         n_m=100,
         cosmo=cosmo,
         A_survey=A_survey,
         MassFunc=MassFunc,
         pool=pool,
+        sigma_log10_mobs=sigma_log10_mobs,
+        sigma_log10_mobs_dist=sigma_log10_mobs_dist,
+        **sigma_log10_mobs_dist_kwargs
     )
     lnlike_mixed_mizi = np.where(
         Nobs_mizi > 10,
@@ -563,8 +569,9 @@ def lnlike_gaussian_mizi(
     A_survey=2500,
     MassFunc=MassFuncTinker08,
     sigma_log10_mobs=None,
+    sigma_log10_mobs_dist=None,
     pool=None,
-    **kwargs,
+    **sigma_log10_mobs_dist_kwargs
 ):
     """
     Gaussian likelihood calculation
@@ -595,8 +602,11 @@ def lnlike_gaussian_mizi(
         area of survey in square degrees
     MassFunc : pyccl.halos.hmfunc.MassFunc object
         mass function to use
-    sigma_log10_mobs : float
-        uncertainty on the mass
+    sigma_log10_mobs : array-like or float
+        uncertainty range on the mass
+    sigma_log10_mobs_dist : callable
+        distribution for sigma_log10_mobs
+        [Default : None]
     pool : multiprocessing pool or None
 
     Returns
@@ -616,13 +626,15 @@ def lnlike_gaussian_mizi(
     N_mizi = abundance.N_in_bins(
         z_bin_edges=z_bin_edges,
         m200m_bin_edges=10 ** log10_m200m_bin_edges,
-        sigma_log10_mobs=sigma_log10_mobs,
         n_z=50,
         n_m=100,
         cosmo=cosmo,
         A_survey=A_survey,
         MassFunc=MassFunc,
         pool=pool,
+        sigma_log10_mobs=sigma_log10_mobs,
+        sigma_log10_mobs_dist=sigma_log10_mobs_dist,
+        **sigma_log10_mobs_dist_kwargs
     )
 
     # need to return a float since otherwise log_prob is assumed to have blobs
@@ -643,13 +655,15 @@ def sample_gaussian_likelihood(
     cosmo_fixed,
     z_bins,
     log10_m200m_bins,
-    sigma_log10_mobs,
+    sigma_log10_mobs=None,
+    sigma_log10_mobs_dist=None,
     mcmc_name=None,
     nwalkers=32,
     nsamples=5000,
     discard=100,
     out_q=None,
     pool=None,
+    **sigma_log10_mobs_dist_kwargs
 ):
     """Sample the likelihood
 
@@ -679,8 +693,11 @@ def sample_gaussian_likelihood(
         number of bins for z
     log10_m200m_bins : int
         number bins for log10_m200m
-    sigma_log10_mobs : float
-        uncertainty on the mass
+    sigma_log10_mobs : array-like or float
+        uncertainty range on the mass
+    sigma_log10_mobs_dist : callable
+        distribution for sigma_log10_mobs
+        [Default : None]
     mcmc_name : str or None
         group to save MCMC samples to
     nwalkers : int
@@ -755,6 +772,8 @@ def sample_gaussian_likelihood(
                 "z_min": z_min_sample,
                 "z_max": z_max_sample,
                 "sigma_log10_mobs": sigma_log10_mobs,
+                "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
+                "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
             }
             # # added for loading previous result if stopped by error
             # if np.round(np.log10(kwargs['m200m_min']), 2) in af[method].keys():
@@ -819,6 +838,9 @@ def fit_maps_gaussian(
     z_bins,
     log10_m200m_bins,
     out_q=None,
+    sigma_log10_mobs=None,
+    sigma_log10_mobs_dist=None,
+    **sigma_log10_mobs_dist_kwargs
 ):
     """Fit the maximum a posteriori probability for the halo samples
     saved in fnames.
@@ -852,6 +874,11 @@ def fit_maps_gaussian(
     out_q : Queue() instance or None
         queue to put results in
         [Default: None]
+    sigma_log10_mobs : array-like or float
+        uncertainty range on the mass
+    sigma_log10_mobs_dist : callable
+        distribution for sigma_log10_mobs
+        [Default : None]
 
     Returns
     -------
@@ -911,6 +938,9 @@ def fit_maps_gaussian(
                 "m200m_min": m200m_min_sample,
                 "z_min": z_min_sample,
                 "z_max": z_max_sample,
+                "sigma_log10_mobs": sigma_log10_mobs,
+                "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
+                "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
             }
             # # added for loading previous result if stopped by error
             # if np.round(np.log10(kwargs['m200m_min']), 2) in af[method].keys():
@@ -955,6 +985,9 @@ def fit_maps_gaussian(
                 "cosmo_fixed": kwargs["cosmo_fixed"],
                 "z_bin_edges": z_edges,
                 "log10_m200m_bin_edges": log10_m200m_edges,
+                "sigma_log10_mobs": kwargs["sigma_log10_mobs"],
+                "sigma_log10_mobs_dist": kwargs["sigma_log10_mobs_dist"],
+                "sigma_log10_mobs_dist_kwargs": kwargs["sigma_log10_mobs_dist_kwargs"],
             }
             af.update()
 
@@ -983,6 +1016,9 @@ def fit_maps_gaussian_mp(
     log10_m200m_bins=20,
     rng=default_rng(0),
     n_cpus=None,
+    sigma_log10_mobs=None,
+    sigma_log10_mobs_dist=None,
+    **sigma_log10_mobs_dist_kwargs
 ):
     """Fit the maximum a posteriori probability for the halo samples
     saved in fnames.
@@ -1017,6 +1053,13 @@ def fit_maps_gaussian_mp(
         Generator for random numbers
     n_cpus : int
         number of cpus to use
+    sigma_log10_mobs : array-like or float
+        uncertainty range on the mass
+        [Default : None]
+    sigma_log10_mobs_dist : callable
+        distribution for sigma_log10_mobs
+        [Default : None]
+
     Returns
     -------
     (n, ndim) array with MAP for each fname

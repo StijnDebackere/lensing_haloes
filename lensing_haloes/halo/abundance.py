@@ -193,10 +193,12 @@ def dNdlog10mdz_integral(
     log10_mobs_min=None,
     log10_mobs_max=None,
     sigma_log10_mobs=None,
+    sigma_log10_mobs_dist=None,
     n_m=400,
     cosmo=cosmology(),
     A_survey=2500,
     MassFunc=MassFuncTinker08,
+    **sigma_log10_mobs_dist_kwargs
 ):
     """Return the integral of the total number of objects expected in a
     survey of area A_survey [deg^2]
@@ -221,8 +223,11 @@ def dNdlog10mdz_integral(
     log10_mobs_max : float
         log10 of the observed mass bin [M_sun / h]
         [Default : None]
-    sigma_log10_mobs : float
-        uncertainty on the observed mass
+    sigma_log10_mobs : array-like or float
+        range of sigma_log10_m_obs
+        [Default : None]
+    sigma_log10_mobs_dist : callable
+        distribution for sigma_log10_mobs
         [Default : None]
     n_m : int
         number of masses to sample
@@ -265,9 +270,24 @@ def dNdlog10mdz_integral(
         conv_obs = 1.
 
     else:
-        xi = (log10_mobs_min - log10_m_full) / (2 * sigma_log10_mobs ** 2)**0.5
-        xiplusone = (log10_mobs_max - log10_m_full) / (2 * sigma_log10_mobs ** 2)**0.5
-        conv_obs = 0.5 * (erfc(xi) - erfc(xiplusone))
+        xi = (
+            (log10_mobs_min - log10_m_full)[..., None]
+            / (2 * sigma_log10_mobs ** 2)**0.5
+        )
+        xiplusone = (
+            (log10_mobs_max - log10_m_full)[..., None]
+            / (2 * sigma_log10_mobs ** 2)**0.5
+        )
+        erfc_term = 0.5 * (erfc(xi) - erfc(xiplusone))
+        if sigma_log10_mobs_dist is None:
+            conv_obs = erfc_term
+        else:
+            conv_obs = intg.simps(
+                y=erfc_term * sigma_log10_mobs_dist(
+                    sigma_log10_mobs, **sigma_log10_mobs_dist_kwargs
+                ),
+                x=sigma_log10_mobs, axis=-1
+            )
 
     dNdlg10mdz_full = 10 ** interp_func(log10_m_full) * conv_obs
 
@@ -285,12 +305,14 @@ def N_in_bins(
     z_bin_edges,
     m200m_bin_edges,
     sigma_log10_mobs=None,
+    sigma_log10_mobs_dist=None,
     n_z=50,
     n_m=1000,
     cosmo=cosmology(),
     A_survey=2500,
     MassFunc=MassFuncTinker08,
     pool=None,
+    **sigma_log10_mobs_dist_kwargs
 ):
     """Return the integral of the total number of objects expected in a
     survey of area A_survey [deg^2]
@@ -301,8 +323,11 @@ def N_in_bins(
         redshift bins
     m200m_bin_edges : (m,) array
         mass bins
-    sigma_log10_mobs : float
+    sigma_log10_mobs : array-like or float
         uncertainty on the mass
+    sigma_log10_mobs_dist : callable
+        distribution for sigma_log10_mobs
+        [Default : None]
     n_z : int
         number of redshifts to sample
     n_m : int
@@ -342,8 +367,8 @@ def N_in_bins(
             log10_mobs_min = None
             log10_mobs_max = None
         else:
-            log10_m200m_min = np.log10(m_min) - 5 * sigma_log10_mobs
-            log10_m200m_max = np.log10(m_max) + 5 * sigma_log10_mobs
+            log10_m200m_min = np.log10(m_min) - 2.5 * sigma_log10_mobs.max()
+            log10_m200m_max = np.log10(m_max) + 2.5 * sigma_log10_mobs.max()
             log10_mobs_min = np.log10(m_min)
             log10_mobs_max = np.log10(m_max)
 
@@ -356,10 +381,12 @@ def N_in_bins(
             log10_mobs_min=log10_mobs_min,
             log10_mobs_max=log10_mobs_max,
             sigma_log10_mobs=sigma_log10_mobs,
+            sigma_log10_mobs_dist=sigma_log10_mobs_dist,
             n_m=n_m,
             cosmo=cosmo,
             A_survey=A_survey,
             MassFunc=MassFunc,
+            **sigma_log10_mobs_dist_kwargs
         )
 
     if pool is not None:
