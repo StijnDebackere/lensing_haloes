@@ -32,7 +32,7 @@ LN_SQRT_2PI = np.log(np.sqrt(2 * np.pi))
 def log_prior(theta, bounds):
     if within_bounds(theta, bounds):
         return 0.0
-    return - np.inf
+    return -np.inf
 
 
 def log_prob(theta, **kwargs):
@@ -764,28 +764,24 @@ def sample_gaussian_likelihood(
                 "z_bin_edges": z_edges,
                 "log10_m200m_bin_edges": log10_m200m_edges,
                 "A_survey": A_survey,
-                "theta_init": theta_init,
                 "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
                 "m200m_min": m200m_min_sample,
-                "z_min": z_min_sample,
-                "z_max": z_max_sample,
                 "sigma_log10_mobs": sigma_log10_mobs,
                 "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
-                "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
+                **sigma_log10_mobs_dist_kwargs,
             }
             # # added for loading previous result if stopped by error
             # if np.round(np.log10(kwargs['m200m_min']), 2) in af[method].keys():
             #     fname_map = af[method][np.round(np.log10(kwargs['m200m_min']), 2)]['res_gaussian']['x']
-
         if mcmc_name is None:
             name = (
-                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                    f'{method}/{np.round(np.log10(kwargs.pop("m200m_min")), 2)}/'
                     f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
                 )
             pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
         else:
             name = (
-                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                    f'{method}/{np.round(np.log10(kwargs.pop("m200m_min")), 2)}/'
                     f"/{res_options[lnlike]}/mcmc/{mcmc_name}"
                 )
             with h5py.File(str(Path(fname).with_suffix(".chains.hdf5")), 'r') as f:

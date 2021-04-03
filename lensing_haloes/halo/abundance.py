@@ -314,7 +314,7 @@ def N_in_bins(
     pool=None,
     sigma_log10_mobs=None,
     sigma_log10_mobs_dist=None,
-    **sigma_log10_mobs_dist_kwargs
+    **kwargs
 ):
     """Return the integral of the total number of objects expected in a
     survey of area A_survey [deg^2]
@@ -388,7 +388,7 @@ def N_in_bins(
             cosmo=cosmo,
             A_survey=A_survey,
             MassFunc=MassFunc,
-            **sigma_log10_mobs_dist_kwargs
+            **kwargs
         )
 
     if pool is not None:
