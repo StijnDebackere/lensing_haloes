@@ -24,8 +24,6 @@ from lensing_haloes.cosmo.cosmo import cosmology
 import lensing_haloes.halo.abundance as abundance
 from lensing_haloes.util.tools import chunks, within_bounds
 
-from pdb import set_trace
-
 
 # factor needed in likelihood calculation
 LN_SQRT_2PI = np.log(np.sqrt(2 * np.pi))
