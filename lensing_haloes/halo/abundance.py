@@ -5,6 +5,7 @@ from pyccl.halos.hmfunc import MassFuncTinker08
 import scipy.integrate as intg
 import scipy.interpolate as interp
 from scipy.special import erfc
+import scipy.stats as stats
 
 from lensing_haloes.cosmo.cosmo import cosmology, dVdz
 
@@ -243,6 +244,12 @@ def dNdlog10mdz_integral(
     N : float
         number of expected objects in survey
     """
+    if sigma_log10_mobs_dist is not None:
+        if (
+                not isinstance(sigma_log10_mobs_dist, stats.rv_continuous)
+                or not hasattr(sigma_log10_mobs_dist, 'pdf')
+        ):
+            raise TypeError(f'sigma_log10_mobs_dist should be stats.rv_continuous or should have pdf method')
     z_range = np.linspace(z_min, z_max, n_z)
 
     # create initial range to calculate hmf that will not crash
@@ -285,7 +292,7 @@ def dNdlog10mdz_integral(
             conv_obs = erfc_term.reshape(-1)
         else:
             conv_obs = intg.simps(
-                y=erfc_term * sigma_log10_mobs_dist(
+                y=erfc_term * sigma_log10_mobs_dist.pdf(
                     sigma_log10_mobs, **sigma_log10_mobs_dist_kwargs
                 ),
                 x=sigma_log10_mobs, axis=-1
@@ -339,7 +346,7 @@ def N_in_bins(
     sigma_log10_mobs : array-like or float
         uncertainty on the mass
     sigma_log10_mobs_dist : callable
-        distribution for sigma_log10_mobs
+        scipy.stats distribution for sigma_log10_mobs
         [Default : None]
 
     Returns
