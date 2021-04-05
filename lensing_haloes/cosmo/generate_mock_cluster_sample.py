@@ -1,5 +1,6 @@
 """This module generates mock cluster samples."""
 from copy import deepcopy
+import itertools
 from multiprocessing import Process, Manager
 from pathlib import Path
 import os
@@ -614,9 +615,7 @@ def bias_samples_fbar_mp(
         n_cpus=8,
 ):
     """Generate biased halo samples for the list of fnames. Only haloes
-    >m200m_min and z_min < z < z_max are included. An interpolated
-    relation for the ratio between (z, log10(m200m_dmo)) and m500c needs
-    to be passed along
+    >m200m_min and z_min < z < z_max are included.
 
     """
     prof_options = [None, 'median', 'min', 'max']
@@ -693,3 +692,60 @@ def bias_samples_fbar_mp(
 
         for proc in procs:
             proc.join()
+
+
+def m200m_ratio(m200m, log10_mt=15, alpha=-2, delta_m=0.1):
+    return (1 - delta_m + delta_m * 0.5 * (1 + np.tanh(alpha * (np.log10(m200m) - log10_mt))))
+
+
+def generate_mass_bias(fnames, method, func_m200m_ratio, names, kwargs_lists, verbose=False, **extra):
+    """Generate arbitrary mass biases for method in fnames with
+    func_m200m_ratio(m200m, **kwargs).
+
+    Parameters
+    ----------
+    fnames : list
+        files to load
+    method : str
+        mass determination method saved in fnames
+    func_m200m_ratio : callable
+        func_m200m_ratio(m200m, **kwargs)
+    names : list
+        name for each mass bias
+    kwargs_lists : dict of lists
+        list of values for each kwarg of func_m200m_ratio
+        itertools.product of all possible values will be saved
+    verbose : bool
+        print output
+    extra : dict
+        extra information to be saved under names
+
+    Returns
+    -------
+    names : list
+        names of new datasets that were added
+
+    """
+    kwarg_names = kwargs_lists.keys()
+    for fname in fnames:
+        with asdf.open(fname, mode='rw', copy_arrays=True, lazy_load=False) as af:
+            for name, kwarg_vals in zip(
+                    names, itertools.product(*kwargs_lists.values())):
+                kwargs = {
+                    key: val for key, val in zip(kwarg_names, kwarg_vals)
+                }
+
+                m200m_sample = af[method]['m200m_sample'][:]
+                af[name] = {
+                    'm200m_sample': func_m200m_ratio(m200m_sample, **kwargs) * m200m_sample,
+                    'selection': af[method]['selection'][:],
+                    'z_min': af[method]['z_min'],
+                    'z_max': af[method]['z_max'],
+                    'm200m_min': af[method]['m200m_min'],
+                    **kwargs, **extra
+                }
+                af.update()
+                if verbose:
+                    print(f'Saved {fname} for {list(kwarg_names)} = {kwarg_vals}')
+
+    return names
