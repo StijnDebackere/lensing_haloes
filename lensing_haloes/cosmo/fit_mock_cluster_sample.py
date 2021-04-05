@@ -36,8 +36,8 @@ def log_prior(theta, bounds):
 
 
 def log_prob(theta, **kwargs):
-    bounds = kwargs.pop('bounds')
-    lnlike = kwargs.pop('lnlike')
+    bounds = kwargs.pop("bounds")
+    lnlike = kwargs.pop("lnlike")
     lp = log_prior(theta, bounds)
     if not np.isfinite(lp):
         return -np.inf
@@ -218,15 +218,15 @@ def sample_poisson_likelihood(
             }
         if mcmc_name is None:
             name = (
-                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
-                    f"/poisson/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
-                )
+                f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                f"/poisson/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
+            )
             pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
         else:
             name = (
-                    f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
-                    f"/poisson/mcmc/{mcmc_name}"
-                )
+                f'{method}/{np.round(np.log10(kwargs["m200m_min"]), 2)}/'
+                f"/poisson/mcmc/{mcmc_name}"
+            )
             pos = None
 
         sampler = emcee.EnsembleSampler(
@@ -478,7 +478,7 @@ def lnlike_gaussian_poisson_mizi(
     pool=None,
     sigma_log10_mobs=None,
     sigma_log10_mobs_dist=None,
-    **sigma_log10_mobs_dist_kwargs
+    **sigma_log10_mobs_dist_kwargs,
 ):
     """
     Mixed likelihood with Gaussian expectation value
@@ -513,7 +513,7 @@ def lnlike_gaussian_poisson_mizi(
     sigma_log10_mobs : array-like or float
         uncertainty range on the mass
     sigma_log10_mobs_dist : callable
-        distribution for sigma_log10_mobs
+        scipy.stats distribution for sigma_log10_mobs
         [Default : None]
 
     Returns
@@ -541,7 +541,7 @@ def lnlike_gaussian_poisson_mizi(
         pool=pool,
         sigma_log10_mobs=sigma_log10_mobs,
         sigma_log10_mobs_dist=sigma_log10_mobs_dist,
-        **sigma_log10_mobs_dist_kwargs
+        **sigma_log10_mobs_dist_kwargs,
     )
     lnlike_mixed_mizi = np.where(
         Nobs_mizi > 10,
@@ -566,10 +566,10 @@ def lnlike_gaussian_mizi(
     cosmo_fixed,
     A_survey=2500,
     MassFunc=MassFuncTinker08,
+    pool=None,
     sigma_log10_mobs=None,
     sigma_log10_mobs_dist=None,
-    pool=None,
-    **sigma_log10_mobs_dist_kwargs
+    **sigma_log10_mobs_dist_kwargs,
 ):
     """
     Gaussian likelihood calculation
@@ -600,12 +600,12 @@ def lnlike_gaussian_mizi(
         area of survey in square degrees
     MassFunc : pyccl.halos.hmfunc.MassFunc object
         mass function to use
+    pool : multiprocessing pool or None
     sigma_log10_mobs : array-like or float
         uncertainty range on the mass
     sigma_log10_mobs_dist : callable
-        distribution for sigma_log10_mobs
+        scipy.stats distribution for sigma_log10_mobs
         [Default : None]
-    pool : multiprocessing pool or None
 
     Returns
     -------
@@ -632,7 +632,7 @@ def lnlike_gaussian_mizi(
         pool=pool,
         sigma_log10_mobs=sigma_log10_mobs,
         sigma_log10_mobs_dist=sigma_log10_mobs_dist,
-        **sigma_log10_mobs_dist_kwargs
+        **sigma_log10_mobs_dist_kwargs,
     )
 
     # need to return a float since otherwise log_prob is assumed to have blobs
@@ -653,15 +653,15 @@ def sample_gaussian_likelihood(
     cosmo_fixed,
     z_bins,
     log10_m200m_bins,
-    sigma_log10_mobs=None,
-    sigma_log10_mobs_dist=None,
     mcmc_name=None,
     nwalkers=32,
     nsamples=5000,
     discard=100,
     out_q=None,
     pool=None,
-    **sigma_log10_mobs_dist_kwargs
+    sigma_log10_mobs=None,
+    sigma_log10_mobs_dist=None,
+    **sigma_log10_mobs_dist_kwargs,
 ):
     """Sample the likelihood
 
@@ -694,7 +694,7 @@ def sample_gaussian_likelihood(
     sigma_log10_mobs : array-like or float
         uncertainty range on the mass
     sigma_log10_mobs_dist : callable
-        distribution for sigma_log10_mobs
+        scipy.stats distribution for sigma_log10_mobs
         [Default : None]
     mcmc_name : str or None
         group to save MCMC samples to
@@ -709,6 +709,11 @@ def sample_gaussian_likelihood(
         [Default: None]
     pool : Pool object
         optional pool to use for EnsembleSampler
+    sigma_log10_mobs : array-like or float
+        uncertainty range on the mass
+    sigma_log10_mobs_dist : callable
+        scipy.stats distribution for sigma_log10_mobs
+        [Default : None]
 
     Returns
     -------
@@ -765,7 +770,6 @@ def sample_gaussian_likelihood(
                 "log10_m200m_bin_edges": log10_m200m_edges,
                 "A_survey": A_survey,
                 "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
-                "m200m_min": m200m_min_sample,
                 "sigma_log10_mobs": sigma_log10_mobs,
                 "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
                 **sigma_log10_mobs_dist_kwargs,
@@ -775,16 +779,16 @@ def sample_gaussian_likelihood(
             #     fname_map = af[method][np.round(np.log10(kwargs['m200m_min']), 2)]['res_gaussian']['x']
         if mcmc_name is None:
             name = (
-                    f'{method}/{np.round(np.log10(kwargs.pop("m200m_min")), 2)}/'
-                    f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
-                )
+                f'{method}/{np.round(np.log10(m200m_min_sample), 2)}/'
+                f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
+            )
             pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
         else:
             name = (
-                    f'{method}/{np.round(np.log10(kwargs.pop("m200m_min")), 2)}/'
-                    f"/{res_options[lnlike]}/mcmc/{mcmc_name}"
-                )
-            with h5py.File(str(Path(fname).with_suffix(".chains.hdf5")), 'r') as f:
+                f'{method}/{np.round(np.log10(m200m_min_sample), 2)}/'
+                f"/{res_options[lnlike]}/mcmc/{mcmc_name}"
+            )
+            with h5py.File(str(Path(fname).with_suffix(".chains.hdf5")), "r") as f:
                 items = []
                 f.visit(items.append)
                 if name in items:
@@ -821,7 +825,7 @@ def sample_gaussian_likelihood(
 
 def fit_maps_gaussian(
     fnames,
-    method,
+    methods,
     lnlike,
     z_min,
     z_max,
@@ -834,7 +838,7 @@ def fit_maps_gaussian(
     out_q=None,
     sigma_log10_mobs=None,
     sigma_log10_mobs_dist=None,
-    **sigma_log10_mobs_dist_kwargs
+    **sigma_log10_mobs_dist_kwargs,
 ):
     """Fit the maximum a posteriori probability for the halo samples
     saved in fnames.
@@ -843,8 +847,8 @@ def fit_maps_gaussian(
     ----------
     fnames : list
         list of filenames
-    method : str
-        mass fitting method
+    methods : list
+        mass fitting method for each fname
     lnlike : str
         likelihood to use: gaussian or mixed
     z_min : float
@@ -871,7 +875,7 @@ def fit_maps_gaussian(
     sigma_log10_mobs : array-like or float
         uncertainty range on the mass
     sigma_log10_mobs_dist : callable
-        distribution for sigma_log10_mobs
+        scipy.stats distribution for sigma_log10_mobs
         [Default : None]
 
     Returns
@@ -889,7 +893,7 @@ def fit_maps_gaussian(
     }
     res_options = {"gaussian": "res_gaussian", "mixed": "res_gaussian_poisson"}
 
-    for idx, fname in enumerate(fnames):
+    for idx, (fname, method) in enumerate(zip(fnames, methods)):
         with asdf.open(fname, copy_arrays=True) as af:
             # load possibly referenced values
             af.resolve_references()
@@ -924,17 +928,13 @@ def fit_maps_gaussian(
 
             kwargs = {
                 "Nobs_mizi": Nobs_mizi,
-                "z_bin_edges": z_edges,
                 "log10_m200m_bin_edges": log10_m200m_edges,
-                "A_survey": A_survey,
-                "theta_init": theta_init,
+                "z_bin_edges": z_edges,
                 "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
-                "m200m_min": m200m_min_sample,
-                "z_min": z_min_sample,
-                "z_max": z_max_sample,
+                "A_survey": A_survey,
                 "sigma_log10_mobs": sigma_log10_mobs,
                 "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
-                "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
+                **sigma_log10_mobs_dist_kwargs,
             }
             # # added for loading previous result if stopped by error
             # if np.round(np.log10(kwargs['m200m_min']), 2) in af[method].keys():
@@ -956,33 +956,56 @@ def fit_maps_gaussian(
 
         # append results to asdf file
         with asdf.open(fname, mode="rw") as af:
+            m_key = np.round(np.log10(m200m_min_sample), 2)
             # check whether this is the first time this mass cut has been fit
-            if np.round(np.log10(kwargs["m200m_min"]), 2) not in af[method].keys():
-                af.tree[method][np.round(np.log10(kwargs["m200m_min"]), 2)] = {}
-            af.tree[method][np.round(np.log10(kwargs["m200m_min"]), 2)][
-                res_options[lnlike]
-            ] = {
-                "theta_init": theta_init[idx],
-                "fun": res.fun,
-                "jac": res.jac,
-                "message": res.message,
-                "nfev": res.nfev,
-                "nit": res.nit,
-                "njev": res.njev,
-                "status": res.status,
-                "success": res.success,
-                "x": res.x,
-                "m200m_min": kwargs["m200m_min"],
-                "z_min": kwargs["z_min"],
-                "z_max": kwargs["z_max"],
-                "A_survey": kwargs["A_survey"],
-                "cosmo_fixed": kwargs["cosmo_fixed"],
-                "z_bin_edges": z_edges,
-                "log10_m200m_bin_edges": log10_m200m_edges,
-                "sigma_log10_mobs": kwargs["sigma_log10_mobs"],
-                "sigma_log10_mobs_dist": kwargs["sigma_log10_mobs_dist"],
-                "sigma_log10_mobs_dist_kwargs": kwargs["sigma_log10_mobs_dist_kwargs"],
-            }
+            if m_key not in af[method].keys():
+                af.tree[method][m_key] = {}
+
+            to_save = {
+                    "theta_init": theta_init[idx],
+                    "fun": res.fun,
+                    "jac": res.jac,
+                    "message": res.message,
+                    "nfev": res.nfev,
+                    "nit": res.nit,
+                    "njev": res.njev,
+                    "status": res.status,
+                    "success": res.success,
+                    "x": res.x,
+                # setup information
+                    "m200m_min": m200m_min_sample,
+                    "z_min": z_min_sample,
+                    "z_max": z_max_sample,
+                    "A_survey": A_survey,
+                    "cosmo_fixed": cosmo_fixed,
+                    "z_bin_edges": z_edges,
+                    "log10_m200m_bin_edges": log10_m200m_edges,
+                    "sigma_log10_mobs": sigma_log10_mobs,
+                    "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
+                }
+
+            # try to save to unique location matching method, mass, lnlike and sigma_log10_mobs
+            name = f"sigma_log10_mobs_dist_{getattr(sigma_log10_mobs_dist, 'name')}"
+            loc = sigma_log10_mobs_dist_kwargs.get('loc', None)
+            scale = sigma_log10_mobs_dist_kwargs.get('scale', None)
+            if name is not None:
+                af.tree[method][m_key][res_options[lnlike]][name] = {}
+                if loc is not None:
+                    af.tree[method][m_key][res_options[lnlike]][name][loc] = {}
+                    if scale is not None:
+                        af.tree[method][m_key][res_options[lnlike]][name][loc][scale] = to_save
+
+                    else:
+                        af.tree[method][m_key][res_options[lnlike]][name][loc] = {
+                            **to_save,
+                            **af.tree[method][m_key][res_options[lnlike]][name][loc]
+                        }
+                else:
+                    af.tree[method][m_key][res_options[lnlike]][name] = {
+                        **to_save,
+                        **af.tree[method][m_key][res_options[lnlike]][name]
+                    }
+
             af.update()
 
     if out_q is not None:
@@ -994,7 +1017,7 @@ def fit_maps_gaussian(
 
 def fit_maps_gaussian_mp(
     fnames,
-    method,
+    methods,
     z_min,
     z_max,
     m200m_min,
@@ -1012,7 +1035,7 @@ def fit_maps_gaussian_mp(
     n_cpus=None,
     sigma_log10_mobs=None,
     sigma_log10_mobs_dist=None,
-    **sigma_log10_mobs_dist_kwargs
+    **sigma_log10_mobs_dist_kwargs,
 ):
     """Fit the maximum a posteriori probability for the halo samples
     saved in fnames.
@@ -1021,8 +1044,8 @@ def fit_maps_gaussian_mp(
     ----------
     fnames : list
         list of filenames
-    method : str
-        mass fitting method
+    methods : list
+        mass fitting method for each fname
     lnlike : str
         likelihood to use: 'gaussian' or 'mixed'
     z_min : float
@@ -1051,16 +1074,21 @@ def fit_maps_gaussian_mp(
         uncertainty range on the mass
         [Default : None]
     sigma_log10_mobs_dist : callable
-        distribution for sigma_log10_mobs
+        scipy.stats distribution for sigma_log10_mobs
         [Default : None]
 
     Returns
     -------
     (n, ndim) array with MAP for each fname
     """
-    method_options = ["WL", "WL_min", "WL_max", "WL_c", "WL_c_min", "WL_c_max", "true"]
-    if method not in method_options:
-        raise ValueError(f"{method} not in {method_options}")
+    # method_options = [
+    #     "WL", "WL_min", "WL_max", "WL_c", "WL_c_min", "WL_c_max", "true",
+    # ]
+    # if method not in method_options:
+    #     raise ValueError(f"{method} not in {method_options}")
+
+    if type(methods) == str:
+        methods = [methods] * len(fnames)
 
     lnlike_options = ["gaussian", "mixed"]
     if lnlike not in lnlike_options:
@@ -1081,27 +1109,31 @@ def fit_maps_gaussian_mp(
     procs = []
 
     fnames_split = list(chunks(fnames, n_cpus))
+    methods_split = list(chunks(methods, n_cpus))
     theta_split = list(chunks(theta_init, n_cpus))
     # add random error to theta_init to avoid exact result
 
     t1 = time.time()
-    for fns, theta in zip(fnames_split, theta_split):
+    for fns, meths, theta in zip(fnames_split, methods_split, theta_split):
         process = Process(
             target=fit_maps_gaussian,
-            args=(
-                fns,
-                method,
-                lnlike,
-                z_min,
-                z_max,
-                m200m_min,
-                theta,
-                bounds,
-                cosmo_fixed,
-                z_bins,
-                log10_m200m_bins,
-                out_q,
-            ),
+            kwargs={
+                "fnames": fns,
+                "methods": meths,
+                "lnlike": lnlike,
+                "z_min": z_min,
+                "z_max": z_max,
+                "m200m_min": m200m_min,
+                "theta_init": theta,
+                "bounds": bounds,
+                "cosmo_fixed": cosmo_fixed,
+                "z_bins": z_bins,
+                "log10_m200m_bins": log10_m200m_bins,
+                "out_q": out_q,
+                "sigma_log10_mobs": sigma_log10_mobs,
+                "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
+                **sigma_log10_mobs_dist_kwargs,
+            },
         )
 
         procs.append(process)
