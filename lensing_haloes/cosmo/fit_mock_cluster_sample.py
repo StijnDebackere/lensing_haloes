@@ -215,6 +215,7 @@ def sample_poisson_likelihood(
                 "z_sample": z_sample[selection],
                 "A_survey": A_survey,
                 "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
+                "bounds": bounds,
             }
         if mcmc_name is None:
             name = (
@@ -329,6 +330,7 @@ def fit_maps_poisson(
                     "z_max": kws["z_max"],
                     "A_survey": kws["A_survey"],
                     "cosmo_fixed": kws["cosmo_fixed"],
+                    "bounds": bounds,
                 }
                 af.update()
 
@@ -960,50 +962,52 @@ def fit_maps_gaussian(
             # check whether this is the first time this mass cut has been fit
             if m_key not in af[method].keys():
                 af.tree[method][m_key] = {}
+                af.tree[method][m_key][res_options[lnlike]] = {}
 
             to_save = {
-                    "theta_init": theta_init[idx],
-                    "fun": res.fun,
-                    "jac": res.jac,
-                    "message": res.message,
-                    "nfev": res.nfev,
-                    "nit": res.nit,
-                    "njev": res.njev,
-                    "status": res.status,
-                    "success": res.success,
-                    "x": res.x,
+                "theta_init": theta_init[idx],
+                "fun": res.fun,
+                "jac": res.jac,
+                "message": res.message,
+                "nfev": res.nfev,
+                "nit": res.nit,
+                "njev": res.njev,
+                "status": res.status,
+                "success": res.success,
+                "x": res.x,
                 # setup information
-                    "m200m_min": m200m_min_sample,
-                    "z_min": z_min_sample,
-                    "z_max": z_max_sample,
-                    "A_survey": A_survey,
-                    "cosmo_fixed": cosmo_fixed,
-                    "z_bin_edges": z_edges,
-                    "log10_m200m_bin_edges": log10_m200m_edges,
-                    "sigma_log10_mobs": sigma_log10_mobs,
-                    "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
-                }
+                "m200m_min": m200m_min_sample,
+                "z_min": z_min_sample,
+                "z_max": z_max_sample,
+                "A_survey": A_survey,
+                "cosmo_fixed": cosmo_fixed,
+                "bounds": bounds,
+                "z_bin_edges": z_edges,
+                "log10_m200m_bin_edges": log10_m200m_edges,
+                "sigma_log10_mobs": sigma_log10_mobs,
+                "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
+            }
 
             # try to save to unique location matching method, mass, lnlike and sigma_log10_mobs
-            name = f"sigma_log10_mobs_dist_{getattr(sigma_log10_mobs_dist, 'name')}"
-            loc = sigma_log10_mobs_dist_kwargs.get('loc', None)
-            scale = sigma_log10_mobs_dist_kwargs.get('scale', None)
-            if name is not None:
+            if sigma_log10_mobs_dist is not None:
+                name = f"sigma_log10_mobs_dist_{getattr(sigma_log10_mobs_dist, 'name')}"
                 af.tree[method][m_key][res_options[lnlike]][name] = {}
-                if loc is not None:
-                    af.tree[method][m_key][res_options[lnlike]][name][loc] = {}
-                    if scale is not None:
-                        af.tree[method][m_key][res_options[lnlike]][name][loc][scale] = to_save
 
-                    else:
-                        af.tree[method][m_key][res_options[lnlike]][name][loc] = {
-                            **to_save,
-                            **af.tree[method][m_key][res_options[lnlike]][name][loc]
-                        }
-                else:
+                kwargs_name = '_'.join(
+                    [
+                        f'{key}_{val:.3f}'
+                        for key, val in sigma_log10_mobs_dist_kwargs.items()
+                    ]
+                )
+
+                # no kwargs
+                if kwargs_name != '':
                     af.tree[method][m_key][res_options[lnlike]][name] = {
-                        **to_save,
-                        **af.tree[method][m_key][res_options[lnlike]][name]
+                        **to_save
+                    }
+                else:
+                    af.tree[method][m_key][res_options[lnlike]][name][kwargs_name] = {
+                        **to_save
                     }
 
             af.update()
@@ -1030,7 +1034,7 @@ def fit_maps_gaussian_mp(
     ],
     cosmo_fixed=["omega_b", "h", "n_s"],
     z_bins=8,
-    log10_m200m_bins=20,
+    log10_m200m_bins=40,
     rng=default_rng(0),
     n_cpus=None,
     sigma_log10_mobs=None,
