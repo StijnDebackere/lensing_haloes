@@ -694,11 +694,14 @@ def bias_samples_fbar_mp(
             proc.join()
 
 
-def m200m_ratio(m200m, log10_mt=15, alpha=-2, delta_m=0.1):
-    return (1 - delta_m + delta_m * 0.5 * (1 + np.tanh(alpha * (np.log10(m200m) - log10_mt))))
+def m200m_suppression(m200m, log10_mt=15, alpha=-2, delta_m=0.1):
+    return (
+        (1 - delta_m + delta_m * 0.5 * (1 + np.tanh(alpha * (np.log10(m200m) - log10_mt))))
+        * m200m
+    )
 
 
-def generate_mass_bias(fnames, method, func_m200m_ratio, names, kwargs_lists, verbose=False, **extra):
+def generate_mass_bias(fnames, method, func_m200m, names, kwargs_lists, verbose=False, **extra):
     """Generate arbitrary mass biases for method in fnames with
     func_m200m_ratio(m200m, **kwargs).
 
@@ -708,8 +711,8 @@ def generate_mass_bias(fnames, method, func_m200m_ratio, names, kwargs_lists, ve
         files to load
     method : str
         mass determination method saved in fnames
-    func_m200m_ratio : callable
-        func_m200m_ratio(m200m, **kwargs)
+    func_m200m : callable
+        func_m200m(m200m, **kwargs)
     names : list
         name for each mass bias
     kwargs_lists : dict of lists
@@ -726,26 +729,22 @@ def generate_mass_bias(fnames, method, func_m200m_ratio, names, kwargs_lists, ve
         names of new datasets that were added
 
     """
-    kwarg_names = kwargs_lists.keys()
-    for fname in fnames:
+    for idx, (fname, name) in enumerate(zip(fnames, names)):
+        kwargs = {
+            key: val[idx] for key, val in kwargs_lists.items()
+        }
         with asdf.open(fname, mode='rw', copy_arrays=True, lazy_load=False) as af:
-            for name, kwarg_vals in zip(
-                    names, itertools.product(*kwargs_lists.values())):
-                kwargs = {
-                    key: val for key, val in zip(kwarg_names, kwarg_vals)
-                }
-
-                m200m_sample = af[method]['m200m_sample'][:]
-                af[name] = {
-                    'm200m_sample': func_m200m_ratio(m200m_sample, **kwargs) * m200m_sample,
-                    'selection': af[method]['selection'][:],
-                    'z_min': af[method]['z_min'],
-                    'z_max': af[method]['z_max'],
-                    'm200m_min': af[method]['m200m_min'],
-                    **kwargs, **extra
-                }
-                af.update()
-                if verbose:
-                    print(f'Saved {fname} for {list(kwarg_names)} = {kwarg_vals}')
+            m200m_sample = af[method]['m200m_sample'][:]
+            af[name] = {
+                'm200m_sample': func_m200m(m200m_sample, **kwargs),
+                'selection': af[method]['selection'][:],
+                'z_min': af[method]['z_min'],
+                'z_max': af[method]['z_max'],
+                'm200m_min': af[method]['m200m_min'],
+                **kwargs, **extra
+            }
+            af.update()
+            if verbose:
+                print(f'Saved {fname} for {kwargs}')
 
     return names
