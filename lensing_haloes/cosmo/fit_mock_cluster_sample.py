@@ -3,6 +3,7 @@ i.e. the cluster likelihood, finding the MAP of the cluster sample,
 ...
 """
 from datetime import datetime
+import traceback
 from multiprocessing import Process, Manager
 from pathlib import Path
 import os
@@ -46,12 +47,14 @@ def log_prob(theta, **kwargs):
 
 def lnlike_poisson_mizi(
     theta,
+    cosmo_fixed,
+    prms_varied,
+    prms_fixed,
     m200m_sample,
     z_sample,
     z_min,
     z_max,
     m200m_min,
-    cosmo_fixed,
     A_survey=2500,
     MassFunc=MassFuncTinker08,
 ):
@@ -62,16 +65,19 @@ def lnlike_poisson_mizi(
     ----------
     theta : list
         sampling parameters
+    cosmo_fixed : list
+        fixed cosmological parameters
+    prms_varied : list matching theta
+        cosmological parameters that are varied and possible mass uncertainty
             - omega_m
             - sigma_8
             - w0
             - omega_b
             - h
             - n_s
-    cosmo_fixed : list
-        fixed parameters
-            - any parameters not in theta, [*theta, *theta_fixed] should have
-              same order as sampling parameters
+            - sigma_log10_mobs
+    prms_fixed : list matching cosmo_fixed
+        cosmological parameters that are kept fixed
     m200m_sample : array [M_sun / h]
         extrapolated observed halo masses
     z_sample : array
@@ -92,7 +98,18 @@ def lnlike_poisson_mizi(
     lnlike : float
         likelihood of the given parameters
     """
-    omega_m, sigma_8, w0, omega_b, h, n_s = [*theta, *cosmo_fixed]
+    prms = {
+        **{prm: val for prm, val in zip(prms_varied, theta)},
+        **{prm: val for prm, val in zip(prms_fixed, cosmo_fixed)},
+    }
+    omega_m = prms["omega_m"]
+    sigma_8 = prms["sigma_8"]
+    w0 = prms["w0"]
+    omega_b = prms["omega_b"]
+    h = prms["h"]
+    n_s = prms["n_s"]
+    # # sigma_log10_mobs can either be varied, or it is given as a kwarg
+    # sigma_log10_mobs = prms.get('sigma_log10_mobs', sigma_log10_mobs)
 
     if z_max > z_sample.max():
         z_max = z_sample.max()
@@ -140,8 +157,9 @@ def sample_poisson_likelihood(
     z_max,
     m200m_min,
     theta_init,
+    prms_varied,
+    prms_fixed,
     bounds,
-    cosmo_fixed,
     mcmc_name=None,
     nwalkers=32,
     nsamples=5000,
@@ -168,11 +186,19 @@ def sample_poisson_likelihood(
     theta_init : list of lists
         values of initial cosmology guess for each fname in order
         [omega_m, sigma_8, w0, omega_b, h, n_s]
+    prms_varied : list matching theta
+        cosmological parameters that are varied and possible mass uncertainty
+            - omega_m
+            - sigma_8
+            - w0
+            - omega_b
+            - h
+            - n_s
+            - sigma_log10_mobs
+    prms_fixed : list
+        cosmological parameters that are kept fixed
     bounds : (ndim, 2) array-like
         array containing lower and upper bounds for each dimension
-    cosmo_fixed : list of dict keys
-        cosmological parameters that are kept fixed
-        ['omega_m', 'sigma_8', 'w0', 'omega_b', 'h', 'n_s']
     mcmc_name : str or None
         group to save MCMC samples to
     nwalkers : int
@@ -214,7 +240,9 @@ def sample_poisson_likelihood(
                 "m200m_sample": m200m_sample[selection],
                 "z_sample": z_sample[selection],
                 "A_survey": A_survey,
-                "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
+                "cosmo_fixed": [af[prm] for prm in prms_fixed],
+                "prms_varied": prms_varied,
+                "prms_fixed": prms_fixed,
                 "bounds": bounds,
             }
         if mcmc_name is None:
@@ -330,6 +358,8 @@ def fit_maps_poisson(
                     "z_max": kws["z_max"],
                     "A_survey": kws["A_survey"],
                     "cosmo_fixed": kws["cosmo_fixed"],
+                    "prms_varied": kws["prms_varied"],
+                    "prms_fixed": kws["prms_fixed"],
                     "bounds": bounds,
                 }
                 af.update()
@@ -353,7 +383,8 @@ def fit_maps_poisson_mp(
         0.811,
         -1.0,
     ],
-    cosmo_fixed=["omega_b", "h", "n_s"],
+    prms_varied=["omega_m", "sigma_8", "w0"],
+    prms_fixed=["omega_b", "h", "n_s"],
     rng=default_rng(0),
     n_cpus=None,
 ):
@@ -377,9 +408,17 @@ def fit_maps_poisson_mp(
     theta_init : list
         values of initial cosmology guess in order
         [sigma_8, omega_m, w0, omega_b, h, n_s]
-    cosmo_fixed : list of dict keys
+    prms_varied : list matching theta
+        cosmological parameters that are varied and possible mass uncertainty
+            - omega_m
+            - sigma_8
+            - w0
+            - omega_b
+            - h
+            - n_s
+            - sigma_log10_mobs
+    prms_fixed : list
         cosmological parameters that are kept fixed
-        [sigma_8, 'omega_m', 'w0', 'omega_b', 'h', 'n_s']
     rng : np.random.Generator instance
         Generator for random numbers
     n_cpus : int
@@ -426,7 +465,9 @@ def fit_maps_poisson_mp(
                 "m200m_sample": m200m_sample[selection],
                 "z_sample": z_sample[selection],
                 "A_survey": A_survey,
-                "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
+                "prms_varied": prms_varied,
+                "prms_fixed": prms_fixed,
+                "cosmo_fixed": [af[prm] for prm in prms_fixed],
             }
             kwargs_lst.append(kwargs)
 
@@ -471,10 +512,12 @@ def fit_maps_poisson_mp(
 
 def lnlike_gaussian_poisson_mizi(
     theta,
+    cosmo_fixed,
+    prms_varied,
+    prms_fixed,
     Nobs_mizi,
     log10_m200m_bin_edges,
     z_bin_edges,
-    cosmo_fixed,
     A_survey=2500,
     MassFunc=MassFuncTinker08,
     pool=None,
@@ -489,30 +532,31 @@ def lnlike_gaussian_poisson_mizi(
     ----------
     theta : list
         sampling parameters
+    cosmo_fixed : list
+        fixed cosmological parameters
+    prms_varied : list matching theta
+        cosmological parameters that are varied and possible mass uncertainty
             - omega_m
             - sigma_8
             - w0
             - omega_b
             - h
             - n_s
-    cosmo_fixed : list
-        fixed parameters
-            - any parameters not in theta, [*theta, *theta_fixed] should have
-              same order as sampling parameters
+            - sigma_log10_mobs
+    prms_fixed : list matching cosmo_fixed
+        cosmological parameters that are kept fixed
     Nobs_mizi : (n_z, n_m) array
         number of clusters in each (z, m) bin
     log10_m200m_bin_edges : (n_z + 1) array [M_sun / h]
         bin edges in m200m
     z_bin_edges : (n_z + 1) array
         bin edges in z
-    cosmo_fixed : list
-        fixed cosmological parameters to be passed to cosmo
     A_survey : float [deg^2]
         area of survey in square degrees
     MassFunc : pyccl.halos.hmfunc.MassFunc object
         mass function to use
     pool : multiprocessing pool or None
-    sigma_log10_mobs : array-like or float
+    sigma_log10_mobs : array-like, float or None
         uncertainty range on the mass
     sigma_log10_mobs_dist : callable
         scipy.stats distribution for sigma_log10_mobs
@@ -523,7 +567,19 @@ def lnlike_gaussian_poisson_mizi(
     lnlike : float
         likelihood of the given parameters
     """
-    omega_m, sigma_8, w0, omega_b, h, n_s = [*theta, *cosmo_fixed]
+    # omega_m, sigma_8, w0, sigma_log10_mobs, omega_b, h, n_s = [*theta, *cosmo_fixed]
+    prms = {
+        **{prm: val for prm, val in zip(prms_varied, theta)},
+        **{prm: val for prm, val in zip(prms_fixed, cosmo_fixed)},
+    }
+    omega_m = prms["omega_m"]
+    sigma_8 = prms["sigma_8"]
+    w0 = prms["w0"]
+    omega_b = prms["omega_b"]
+    h = prms["h"]
+    n_s = prms["n_s"]
+    # sigma_log10_mobs can either be varied, or it is given as a kwarg
+    sigma_log10_mobs = prms.get("sigma_log10_mobs", sigma_log10_mobs)
 
     # sigma_8 and n are passed as arguments
     # other parameters should be updated in the astropy FlatwCDM object
@@ -562,10 +618,12 @@ def lnlike_gaussian_poisson_mizi(
 
 def lnlike_gaussian_mizi(
     theta,
+    cosmo_fixed,
+    prms_varied,
+    prms_fixed,
     Nobs_mizi,
     log10_m200m_bin_edges,
     z_bin_edges,
-    cosmo_fixed,
     A_survey=2500,
     MassFunc=MassFuncTinker08,
     pool=None,
@@ -580,16 +638,19 @@ def lnlike_gaussian_mizi(
     ----------
     theta : list
         sampling parameters
+    cosmo_fixed : list
+        fixed cosmological parameters
+    prms_varied : list matching theta
+        cosmological parameters that are varied and possible mass uncertainty
             - omega_m
             - sigma_8
             - w0
             - omega_b
             - h
             - n_s
-    cosmo_fixed : list
-        fixed parameters
-            - any parameters not in theta, [*theta, *theta_fixed] should have
-              same order as sampling parameters
+            - sigma_log10_mobs
+    prms_fixed : list matching cosmo_fixed
+        cosmological parameters that are kept fixed
     Nobs_mizi : (n_z, n_m) array
         number of clusters in each (z, m) bin
     log10_m200m_bin_edges : (n_z + 1) array [M_sun / h]
@@ -614,7 +675,19 @@ def lnlike_gaussian_mizi(
     lnlike : float
         likelihood of the given parameters
     """
-    omega_m, sigma_8, w0, omega_b, h, n_s = [*theta, *cosmo_fixed]
+    # omega_m, sigma_8, w0, omega_b, h, n_s = [*theta, *cosmo_fixed]
+    prms = {
+        **{prm: val for prm, val in zip(prms_varied, theta)},
+        **{prm: val for prm, val in zip(prms_fixed, cosmo_fixed)},
+    }
+    omega_m = prms["omega_m"]
+    sigma_8 = prms["sigma_8"]
+    w0 = prms["w0"]
+    omega_b = prms["omega_b"]
+    h = prms["h"]
+    n_s = prms["n_s"]
+    # sigma_log10_mobs can either be varied, or it is given as a kwarg
+    sigma_log10_mobs = prms.get("sigma_log10_mobs", sigma_log10_mobs)
 
     # sigma_8 and n are passed as arguments
     # other parameters should be updated in the astropy FlatwCDM object
@@ -651,8 +724,9 @@ def sample_gaussian_likelihood(
     z_max,
     m200m_min,
     theta_init,
+    prms_varied,
+    prms_fixed,
     bounds,
-    cosmo_fixed,
     z_bins,
     log10_m200m_bins,
     mcmc_name=None,
@@ -681,14 +755,21 @@ def sample_gaussian_likelihood(
         maximum redshift in the sample
     m200m_min : float
         minimum halo mass in the sample
-    theta_init : list of lists
-        values of initial cosmology guess for each fname in order
-        [omega_m, sigma_8, w0, omega_b, h, n_s]
+    theta_init : list
+        sampling parameters
+    prms_varied : list matching theta
+        cosmological parameters that are varied and possible mass uncertainty
+            - omega_m
+            - sigma_8
+            - w0
+            - omega_b
+            - h
+            - n_s
+            - sigma_log10_mobs
+    prms_fixed : list
+        cosmological parameters that are kept fixed
     bounds : (ndim, 2) array-like
         array containing lower and upper bounds for each dimension
-    cosmo_fixed : list of dict keys
-        cosmological parameters that are kept fixed
-        ['omega_m', 'sigma_8', 'w0', 'omega_b', 'h', 'n_s']
     z_bins : int
         number of bins for z
     log10_m200m_bins : int
@@ -766,12 +847,14 @@ def sample_gaussian_likelihood(
 
             kwargs = {
                 "lnlike": lnlike_options[lnlike],
+                "cosmo_fixed": [af[prm] for prm in prms_fixed],
+                "prms_varied": prms_varied,
+                "prms_fixed": prms_fixed,
                 "bounds": bounds,
                 "Nobs_mizi": Nobs_mizi,
                 "z_bin_edges": z_edges,
                 "log10_m200m_bin_edges": log10_m200m_edges,
                 "A_survey": A_survey,
-                "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
                 "sigma_log10_mobs": sigma_log10_mobs,
                 "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
                 **sigma_log10_mobs_dist_kwargs,
@@ -781,13 +864,13 @@ def sample_gaussian_likelihood(
             #     fname_map = af[method][np.round(np.log10(kwargs['m200m_min']), 2)]['res_gaussian']['x']
         if mcmc_name is None:
             name = (
-                f'{method}/{np.round(np.log10(m200m_min_sample), 2)}/'
+                f"{method}/{np.round(np.log10(m200m_min_sample), 2)}/"
                 f"/{res_options[lnlike]}/mcmc/{datetime.now().strftime('%Y%m%d_%H:%M')}"
             )
             pos = theta_init + 1e-3 * np.random.randn(nwalkers, ndim)
         else:
             name = (
-                f'{method}/{np.round(np.log10(m200m_min_sample), 2)}/'
+                f"{method}/{np.round(np.log10(m200m_min_sample), 2)}/"
                 f"/{res_options[lnlike]}/mcmc/{mcmc_name}"
             )
             with h5py.File(str(Path(fname).with_suffix(".chains.hdf5")), "r") as f:
@@ -833,10 +916,12 @@ def fit_maps_gaussian(
     z_max,
     m200m_min,
     theta_init,
+    prms_varied,
+    prms_fixed,
     bounds,
-    cosmo_fixed,
     z_bins,
     log10_m200m_bins,
+    maps_name=None,
     out_q=None,
     sigma_log10_mobs=None,
     sigma_log10_mobs_dist=None,
@@ -859,18 +944,27 @@ def fit_maps_gaussian(
         maximum redshift in the sample
     m200m_min : float
         minimum halo mass in the sample
-    theta_init : list of lists
-        values of initial cosmology guess for each fname in order
-        [omega_m, sigma_8, w0, omega_b, h, n_s]
+    theta_init : list
+        sampling parameters
+    prms_varied : list matching theta
+        cosmological parameters that are varied and possible mass uncertainty
+            - omega_m
+            - sigma_8
+            - w0
+            - omega_b
+            - h
+            - n_s
+            - sigma_log10_mobs
+    prms_fixed : list
+        cosmological parameters that are kept fixed
     bounds : (ndim, 2) array-like
         array containing lower and upper bounds for each dimension
-    cosmo_fixed : list of dict keys
-        cosmological parameters that are kept fixed
-        ['omega_m', 'sigma_8', 'w0', 'omega_b', 'h', 'n_s']
     z_bins : int
         number of bins for z
     log10_m200m_bins : int
         number bins for log10_m200m
+    maps_name : str or None
+        name to save maps under in asdf file
     out_q : Queue() instance or None
         queue to put results in
         [Default: None]
@@ -932,7 +1026,10 @@ def fit_maps_gaussian(
                 "Nobs_mizi": Nobs_mizi,
                 "log10_m200m_bin_edges": log10_m200m_edges,
                 "z_bin_edges": z_edges,
-                "cosmo_fixed": [af[prm] for prm in cosmo_fixed],
+                "prms_varied": prms_varied,
+                "prms_fixed": prms_fixed,
+                "cosmo_fixed": [af[prm] for prm in prms_fixed],
+                "bounds": bounds,
                 "A_survey": A_survey,
                 "sigma_log10_mobs": sigma_log10_mobs,
                 "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
@@ -976,39 +1073,46 @@ def fit_maps_gaussian(
                 "success": res.success,
                 "x": res.x,
                 # setup information
+                "prms_varied": prms_varied,
                 "m200m_min": m200m_min_sample,
                 "z_min": z_min_sample,
                 "z_max": z_max_sample,
                 "A_survey": A_survey,
-                "cosmo_fixed": cosmo_fixed,
+                "prms_fixed": prms_fixed,
+                "cosmo_fixed": kwargs["cosmo_fixed"],
                 "bounds": bounds,
                 "z_bin_edges": z_edges,
                 "log10_m200m_bin_edges": log10_m200m_edges,
-                "sigma_log10_mobs": sigma_log10_mobs,
-                "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
+                # "sigma_log10_mobs": sigma_log10_mobs,
+                # "sigma_log10_mobs_dist_kwargs": sigma_log10_mobs_dist_kwargs,
             }
 
-            # try to save to unique location matching method, mass, lnlike and sigma_log10_mobs
-            if sigma_log10_mobs_dist is not None:
-                name = f"sigma_log10_mobs_dist_{getattr(sigma_log10_mobs_dist, 'name')}"
-                af.tree[method][m_key][res_options[lnlike]][name] = {}
+            if maps_name is None:
+                if sigma_log10_mobs_dist is not None:
+                    maps_name = f"sigma_log10_mobs_dist_{getattr(sigma_log10_mobs_dist, 'name')}"
+                    kwargs_name = "_".join(
+                        [
+                            f"{key}_{val:.3f}"
+                            for key, val in sigma_log10_mobs_dist_kwargs.items()
+                        ]
+                    )
+                    # try to save to unique location matching method, mass, lnlike and sigma_log10_mobs
+                    af.tree[method][m_key][res_options[lnlike]][maps_name] = {}
 
-                kwargs_name = '_'.join(
-                    [
-                        f'{key}_{val:.3f}'
-                        for key, val in sigma_log10_mobs_dist_kwargs.items()
-                    ]
-                )
-
-                # no kwargs
-                if kwargs_name != '':
-                    af.tree[method][m_key][res_options[lnlike]][name] = {
-                        **to_save
-                    }
+                    # no kwargs
+                    if kwargs_name == "":
+                        af.tree[method][m_key][res_options[lnlike]][maps_name] = {
+                            **to_save
+                        }
+                    else:
+                        af.tree[method][m_key][res_options[lnlike]][name][
+                            kwargs_name
+                        ] = {**to_save}
                 else:
-                    af.tree[method][m_key][res_options[lnlike]][name][kwargs_name] = {
-                        **to_save
-                    }
+                    maps_name = datetime.now().strftime("%Y%m%d_%H:%M")
+
+            else:
+                af.tree[method][m_key][res_options[lnlike]][maps_name] = {**to_save}
 
             af.update()
 
@@ -1026,15 +1130,19 @@ def fit_maps_gaussian_mp(
     z_max,
     m200m_min,
     bounds,
-    lnlike="gaussian",
+    lnlike="mixed",
     theta_init=[
         0.315,
         0.811,
         -1.0,
+        # sigma_log10_mobs included in theta
+        np.log10(1.1),
     ],
-    cosmo_fixed=["omega_b", "h", "n_s"],
+    prms_varied=["omega_m", "sigma_8", "w0", "sigma_log10_mobs"],
+    prms_fixed=["omega_b", "h", "n_s"],
     z_bins=8,
     log10_m200m_bins=40,
+    maps_name=None,
     rng=default_rng(0),
     n_cpus=None,
     sigma_log10_mobs=None,
@@ -1061,15 +1169,24 @@ def fit_maps_gaussian_mp(
     bounds : (ndim, 2) array-like
         array containing lower and upper bounds for each dimension
     theta_init : list
-        values of initial cosmology guess in order
-        [sigma_8, omega_m, w0, omega_b, h, n_s]
-    cosmo_fixed : list of dict keys
+        sampling parameters
+    prms_varied : list matching theta
+        cosmological parameters that are varied and possible mass uncertainty
+            - omega_m
+            - sigma_8
+            - w0
+            - omega_b
+            - h
+            - n_s
+            - sigma_log10_mobs
+    prms_fixed : list
         cosmological parameters that are kept fixed
-        [sigma_8, 'omega_m', 'w0', 'omega_b', 'h', 'n_s']
     z_bins : int
         number of bins for z
     log10_m200m_bins : int
         number of bins for log10_m200m
+    maps_name : str or None
+        name to save maps under in asdf file
     rng : np.random.Generator instance
         Generator for random numbers
     n_cpus : int
@@ -1129,10 +1246,12 @@ def fit_maps_gaussian_mp(
                 "z_max": z_max,
                 "m200m_min": m200m_min,
                 "theta_init": theta,
+                "prms_varied": prms_varied,
+                "prms_fixed": prms_fixed,
                 "bounds": bounds,
-                "cosmo_fixed": cosmo_fixed,
                 "z_bins": z_bins,
                 "log10_m200m_bins": log10_m200m_bins,
+                "maps_name": maps_name,
                 "out_q": out_q,
                 "sigma_log10_mobs": sigma_log10_mobs,
                 "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
@@ -1161,6 +1280,7 @@ def fit_maps_gaussian_mp(
 
 
 def generate_maps_file(
+    fnames=None,
     A_survey="15k",
     z_min="0p1",
     z_max="4",
@@ -1169,17 +1289,20 @@ def generate_maps_file(
     res=["res_gaussian"],
     methods=["WL", "WL_c", "true"],
     mcuts=[14.0, 14.25, 14.5],
+    dists=None,
+    dists_kwargs=None,
     fname_append="",
 ):
     """Consolidate all the MAPs from fnames into a single file."""
-    fnames = mock_sample.get_fnames(
-        A_survey=A_survey,
-        z_min=z_min,
-        z_max=z_max,
-        m200m_min=m200m_min,
-        method=None,
-        cosmo=cosmo,
-    )
+    if fnames is None:
+        fnames = mock_sample.get_fnames(
+            A_survey=A_survey,
+            z_min=z_min,
+            z_max=z_max,
+            m200m_min=m200m_min,
+            method=None,
+            cosmo=cosmo,
+        )
 
     maps = {}
     # load general info
@@ -1205,19 +1328,86 @@ def generate_maps_file(
                 if mcut not in af[method].keys():
                     continue
                 maps[method][mcut] = {}
-                maps[method][mcut]["z_min"] = af[method][mcut]["z_min"]
-                maps[method][mcut]["z_max"] = af[method][mcut]["z_max"]
-                maps[method][mcut]["m200m_min"] = af[method][mcut]["m200m_min"]
-                maps[method][mcut]["cosmo_fixed"] = af[method][mcut]["cosmo_fixed"]
 
                 for r in res:
                     if r not in af[method][mcut].keys():
                         continue
-                    maps[method][mcut][r] = {}
-                    maps[method][mcut][r]["maps"] = []
-                    maps[method][mcut][r]["fun"] = []
-                    maps[method][mcut][r]["success"] = []
 
+                    if dists is None:
+                        maps[method][mcut][r] = {}
+
+                        for key in af[method][mcut][r].keys():
+                            try:
+                                date = datetime.strptime(key, "%Y%m%d_%H:%M")
+                                maps[method][mcut][r]["maps"] = []
+                                maps[method][mcut][r]["fun"] = []
+                                maps[method][mcut][r]["success"] = []
+                                maps[method][mcut][r]["z_min"] = af[method][mcut][r][
+                                    key
+                                ]["z_min"]
+                                maps[method][mcut][r]["z_max"] = af[method][mcut][r][
+                                    key
+                                ]["z_max"]
+                                maps[method][mcut][r]["m200m_min"] = af[method][mcut][
+                                    r
+                                ][key]["m200m_min"]
+                                maps[method][mcut][r]["cosmo_fixed"] = af[method][mcut][
+                                    r
+                                ][key]["cosmo_fixed"]
+                                continue
+                            except ValueError:
+                                continue
+
+                    else:
+                        for idx, dist in enumerate(dists):
+                            if dist not in af[method][mcut][r].keys():
+                                continue
+
+                            if dists_kwargs is None:
+                                maps[method][mcut][r] = {
+                                    dist: {
+                                        "maps": [],
+                                        "fun": [],
+                                        "success": [],
+                                        "z_min": af[method][mcut][r][dist]["z_min"],
+                                        "z_max": af[method][mcut][r][dist]["z_max"],
+                                        "m200m_min": af[method][mcut][r][dist][
+                                            "m200m_min"
+                                        ],
+                                        "cosmo_fixed": af[method][mcut][r][dist][
+                                            "cosmo_fixed"
+                                        ],
+                                        "sigma_log10_mobs_dist_kwargs": af[method][
+                                            mcut
+                                        ][r][dist]["sigma_log10_mobs_dist_kwargs"],
+                                    }
+                                }
+
+                            else:
+                                maps[method][mcut][r] = {
+                                    dist: {
+                                        dists_kwargs[idx]: {
+                                            "maps": [],
+                                            "fun": [],
+                                            "success": [],
+                                            "z_min": af[method][mcut][r][dist][
+                                                dists_kwargs[idx]
+                                            ]["z_min"],
+                                            "z_max": af[method][mcut][r][dist][
+                                                dists_kwargs[idx]
+                                            ]["z_max"],
+                                            "m200m_min": af[method][mcut][r][dist][
+                                                dists_kwargs[idx]
+                                            ]["m200m_min"],
+                                            "cosmo_fixed": af[method][mcut][r][dist][
+                                                dists_kwargs[idx]
+                                            ]["cosmo_fixed"],
+                                            "sigma_log10_mobs_dist_kwargs": af[method][
+                                                mcut
+                                            ][r][dist]["sigma_log10_mobs_dist_kwargs"],
+                                        }
+                                    },
+                                }
     # now go through the different mass cuts for each method
     for fname in tqdm(fnames, desc="Loading files"):
         with asdf.open(fname, copy_arrays=True, lazy_load=False) as af:
@@ -1226,41 +1416,123 @@ def generate_maps_file(
                     for r in res:
                         if r not in maps[method][mcut].keys():
                             continue
-                        try:
-                            maps[method][mcut][r]["maps"].append(
-                                af[method][mcut][r]["x"]
-                            )
-                            maps[method][mcut][r]["fun"].append(
-                                af[method][mcut][r]["fun"]
-                            )
-                            maps[method][mcut][r]["success"].append(
-                                af[method][mcut][r]["success"]
-                            )
-                        except Exception as e:
-                            print(f"{fname} failed with Exception {e}")
+                        if dists is None:
+                            for key in af[method][mcut][r].keys():
+                                try:
+                                    date = datetime.strptime(key, "%Y%m%d_%H:%M")
+                                    maps[method][mcut][r]["maps"].append(
+                                        af[method][mcut][r][key]["x"]
+                                    )
+                                    maps[method][mcut][r]["fun"].append(
+                                        af[method][mcut][r][key]["fun"]
+                                    )
+                                    maps[method][mcut][r]["success"].append(
+                                        af[method][mcut][r][key]["success"]
+                                    )
+                                    continue
+                                except Exception as e:
+                                    # print(f"{fname} failed with Exception")
+                                    # traceback.print_exc()
+                                    pass
+
+                        else:
+                            for idx, dist in enumerate(dists):
+                                if dists_kwargs is None:
+                                    try:
+                                        maps[method][mcut][r][dist]["maps"].append(
+                                            af[method][mcut][r][dist]["x"]
+                                        )
+                                        maps[method][mcut][r][dist]["fun"].append(
+                                            af[method][mcut][r][dist]["fun"]
+                                        )
+                                        maps[method][mcut][r][dist]["success"].append(
+                                            af[method][mcut][r][dist]["success"]
+                                        )
+                                    except Exception as e:
+                                        print(f"{fname} failed with Exception")
+                                        traceback.print_exc()
+                                else:
+                                    try:
+                                        maps[method][mcut][r][dist][dist_kwargs[idx]][
+                                            "maps"
+                                        ].append(
+                                            af[method][mcut][r][dist][dist_kwargs[idx]][
+                                                "x"
+                                            ]
+                                        )
+                                        maps[method][mcut][r][dist][dist_kwargs[idx]][
+                                            "fun"
+                                        ].append(
+                                            af[method][mcut][r][dist][dist_kwargs[idx]][
+                                                "fun"
+                                            ]
+                                        )
+                                        maps[method][mcut][r][dist][dist_kwargs[idx]][
+                                            "success"
+                                        ].append(
+                                            af[method][mcut][r][dist][dist_kwargs[idx]][
+                                                "success"
+                                            ]
+                                        )
+                                    except Exception as e:
+                                        print(f"{fname} failed with Exception")
+                                        traceback.print_exc()
 
     for method in methods_in_files:
         for mcut in maps[method].keys():
             for r in res:
                 if r not in maps[method][mcut].keys():
                     continue
-                maps[method][mcut][r]["maps"] = np.atleast_2d(
-                    maps[method][mcut][r]["maps"]
-                )
-                maps[method][mcut][r]["fun"] = np.atleast_1d(
-                    maps[method][mcut][r]["fun"]
-                )
-                maps[method][mcut][r]["success"] = np.atleast_1d(
-                    maps[method][mcut][r]["success"]
-                )
+                if dists is None:
+                    maps[method][mcut][r]["maps"] = np.atleast_2d(
+                        maps[method][mcut][r]["maps"]
+                    )
+                    maps[method][mcut][r]["fun"] = np.atleast_1d(
+                        maps[method][mcut][r]["fun"]
+                    )
+                    maps[method][mcut][r]["success"] = np.atleast_1d(
+                        maps[method][mcut][r]["success"]
+                    )
+                else:
+                    for idx, dist in enumerate(dists):
+                        if dists_kwargs is None:
+                            maps[method][mcut][r][dist]["maps"] = np.atleast_2d(
+                                maps[method][mcut][r][dist]["maps"]
+                            )
+                            maps[method][mcut][r][dist]["fun"] = np.atleast_1d(
+                                maps[method][mcut][r][dist]["fun"]
+                            )
+                            maps[method][mcut][r][dist]["success"] = np.atleast_1d(
+                                maps[method][mcut][r][dist]["success"]
+                            )
+                        else:
+                            maps[method][mcut][r][dist][dist_kwargs[idx]][
+                                "maps"
+                            ] = np.atleast_2d(
+                                maps[method][mcut][r][dist][dist_kwargs[idx]]["maps"]
+                            )
+                            maps[method][mcut][r][dist][dist_kwargs[idx]][
+                                "fun"
+                            ] = np.atleast_1d(
+                                maps[method][mcut][r][dist][dist_kwargs[idx]]["fun"]
+                            )
+                            maps[method][mcut][r][dist][dist_kwargs[idx]][
+                                "success"
+                            ] = np.atleast_1d(
+                                maps[method][mcut][r][dist][dist_kwargs[idx]]["success"]
+                            )
 
     maps_fname_base = mock_sample.gen_fname(
         A_survey=A_survey, z_min=z_min, z_max=z_max, m200m_min=m200m_min, cosmo=cosmo
     )
 
-    with asdf.AsdfFile(maps) as af:
-        if fname_append != "":
-            fname_append = f"_{fname_append}"
-        af.write_to(f"{maps_fname_base}_maps{fname_append}.asdf")
+    try:
+        with asdf.AsdfFile(maps) as af:
+            if fname_append != "":
+                fname_append = f"_{fname_append}"
+                af.write_to(f"{maps_fname_base}_maps{fname_append}.asdf")
+    except Exception as e:
+        print(f"{fname} failed with Exception")
+        traceback.print_exc()
 
     return maps
