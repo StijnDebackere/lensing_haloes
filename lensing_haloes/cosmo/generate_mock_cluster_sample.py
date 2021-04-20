@@ -454,7 +454,7 @@ def generate_many_samples(
         )
 
 
-def gen_fname(A_survey, z_min, z_max, m200m_min, cosmo):
+def gen_fname(A_survey, z_min, z_max, m200m_min, cosmo='planck2019'):
     if z_max is None:
         z_str = f'zmin_{z_min}'
     else:

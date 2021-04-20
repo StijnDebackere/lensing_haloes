@@ -23,7 +23,7 @@ from tqdm import tqdm
 import lensing_haloes.cosmo.generate_mock_cluster_sample as mock_sample
 from lensing_haloes.cosmo.cosmo import cosmology
 import lensing_haloes.halo.abundance as abundance
-from lensing_haloes.util.tools import chunks, within_bounds
+from lensing_haloes.util.tools import chunks, within_bounds, datetime_in_range
 
 
 # factor needed in likelihood calculation
@@ -1029,7 +1029,6 @@ def fit_maps_gaussian(
                 "prms_varied": prms_varied,
                 "prms_fixed": prms_fixed,
                 "cosmo_fixed": [af[prm] for prm in prms_fixed],
-                "bounds": bounds,
                 "A_survey": A_survey,
                 "sigma_log10_mobs": sigma_log10_mobs,
                 "sigma_log10_mobs_dist": sigma_log10_mobs_dist,
@@ -1281,32 +1280,20 @@ def fit_maps_gaussian_mp(
 
 def generate_maps_file(
     fnames=None,
-    A_survey="15k",
-    z_min="0p1",
-    z_max="4",
-    m200m_min="13p76",
-    cosmo="planck2019",
-    res=["res_gaussian"],
+    res=["res_gaussian_poisson"],
     methods=["WL", "WL_c", "true"],
     mcuts=[14.0, 14.25, 14.5],
-    dists=None,
-    dists_kwargs=None,
+    maps_names=None,
+    date_range=None,
     fname_append="",
+    cosmo_name=None,
 ):
     """Consolidate all the MAPs from fnames into a single file."""
-    if fnames is None:
-        fnames = mock_sample.get_fnames(
-            A_survey=A_survey,
-            z_min=z_min,
-            z_max=z_max,
-            m200m_min=m200m_min,
-            method=None,
-            cosmo=cosmo,
-        )
 
+    # maps are save under method/mcut/res/maps_name
     maps = {}
     # load general info
-    with asdf.open(fnames[0], copy_arrays=True, lazy_load=False) as af:
+    with asdf.open(fnames[0], copy_arrays=True, lazy_load=True) as af:
         maps["A_survey"] = af["A_survey"]
         maps["log10_m_min"] = af["log10_m_min"]
         maps["log10_m_max"] = af["log10_m_max"]
@@ -1333,204 +1320,162 @@ def generate_maps_file(
                     if r not in af[method][mcut].keys():
                         continue
 
-                    if dists is None:
-                        maps[method][mcut][r] = {}
+                    maps[method][mcut][r] = {}
 
-                        for key in af[method][mcut][r].keys():
+                    if maps_names is not None:
+                        for maps_name in maps_names:
                             try:
-                                date = datetime.strptime(key, "%Y%m%d_%H:%M")
-                                maps[method][mcut][r]["maps"] = []
-                                maps[method][mcut][r]["fun"] = []
-                                maps[method][mcut][r]["success"] = []
-                                maps[method][mcut][r]["z_min"] = af[method][mcut][r][
-                                    key
-                                ]["z_min"]
-                                maps[method][mcut][r]["z_max"] = af[method][mcut][r][
-                                    key
-                                ]["z_max"]
-                                maps[method][mcut][r]["m200m_min"] = af[method][mcut][
-                                    r
-                                ][key]["m200m_min"]
-                                maps[method][mcut][r]["cosmo_fixed"] = af[method][mcut][
-                                    r
-                                ][key]["cosmo_fixed"]
-                                continue
-                            except ValueError:
+                                maps[method][mcut][r][maps_name] = {
+                                    "z_min": af[method][mcut][r][maps_name]["z_min"],
+                                    "z_max": af[method][mcut][r][maps_name]["z_max"],
+                                    "m200m_min": af[method][mcut][r][maps_name]["m200m_min"],
+                                    "cosmo_fixed": af[method][mcut][r][maps_name]["cosmo_fixed"],
+                                    "maps": [],
+                                    "fun": [],
+                                    "success": [],
+                                }
+                            except KeyError:
                                 continue
 
                     else:
-                        for idx, dist in enumerate(dists):
-                            if dist not in af[method][mcut][r].keys():
-                                continue
+                        maps[method][mcut][r] = {}
 
-                            if dists_kwargs is None:
-                                maps[method][mcut][r] = {
-                                    dist: {
-                                        "maps": [],
-                                        "fun": [],
-                                        "success": [],
-                                        "z_min": af[method][mcut][r][dist]["z_min"],
-                                        "z_max": af[method][mcut][r][dist]["z_max"],
-                                        "m200m_min": af[method][mcut][r][dist][
-                                            "m200m_min"
-                                        ],
-                                        "cosmo_fixed": af[method][mcut][r][dist][
-                                            "cosmo_fixed"
-                                        ],
-                                        "sigma_log10_mobs_dist_kwargs": af[method][
-                                            mcut
-                                        ][r][dist]["sigma_log10_mobs_dist_kwargs"],
-                                    }
-                                }
-
-                            else:
-                                maps[method][mcut][r] = {
-                                    dist: {
-                                        dists_kwargs[idx]: {
-                                            "maps": [],
-                                            "fun": [],
-                                            "success": [],
-                                            "z_min": af[method][mcut][r][dist][
-                                                dists_kwargs[idx]
-                                            ]["z_min"],
-                                            "z_max": af[method][mcut][r][dist][
-                                                dists_kwargs[idx]
-                                            ]["z_max"],
-                                            "m200m_min": af[method][mcut][r][dist][
-                                                dists_kwargs[idx]
-                                            ]["m200m_min"],
-                                            "cosmo_fixed": af[method][mcut][r][dist][
-                                                dists_kwargs[idx]
-                                            ]["cosmo_fixed"],
-                                            "sigma_log10_mobs_dist_kwargs": af[method][
-                                                mcut
-                                            ][r][dist]["sigma_log10_mobs_dist_kwargs"],
-                                        }
-                                    },
-                                }
-    # now go through the different mass cuts for each method
-    for fname in tqdm(fnames, desc="Loading files"):
-        with asdf.open(fname, copy_arrays=True, lazy_load=False) as af:
-            for method in methods_in_files:
-                for mcut in maps[method].keys():
-                    for r in res:
-                        if r not in maps[method][mcut].keys():
-                            continue
-                        if dists is None:
+                        if date_range is not None:
+                            # find dates
                             for key in af[method][mcut][r].keys():
                                 try:
                                     date = datetime.strptime(key, "%Y%m%d_%H:%M")
-                                    maps[method][mcut][r]["maps"].append(
-                                        af[method][mcut][r][key]["x"]
-                                    )
-                                    maps[method][mcut][r]["fun"].append(
-                                        af[method][mcut][r][key]["fun"]
-                                    )
-                                    maps[method][mcut][r]["success"].append(
-                                        af[method][mcut][r][key]["success"]
-                                    )
+                                    if datetime_in_range(date, *date_range):
+                                        maps[method][mcut][r][date] = {
+                                            "z_min": af[method][mcut][r][date]["z_min"],
+                                            "z_max": af[method][mcut][r][date]["z_max"],
+                                            "m200m_min": af[method][mcut][r][date]["m200m_min"],
+                                            "cosmo_fixed": af[method][mcut][r][date]["cosmo_fixed"],
+                                            "maps": [],
+                                            "fun": [],
+                                            "success": [],
+                                        }
+                                        continue
+                                except ValueError:
                                     continue
-                                except Exception as e:
-                                    # print(f"{fname} failed with Exception")
-                                    # traceback.print_exc()
-                                    pass
-
                         else:
-                            for idx, dist in enumerate(dists):
-                                if dists_kwargs is None:
-                                    try:
-                                        maps[method][mcut][r][dist]["maps"].append(
-                                            af[method][mcut][r][dist]["x"]
+                            try:
+                                maps[method][mcut][r] = {
+                                    "z_min": af[method][mcut][r]["z_min"],
+                                    "z_max": af[method][mcut][r]["z_max"],
+                                    "m200m_min": af[method][mcut][r]["m200m_min"],
+                                    "cosmo_fixed": af[method][mcut][r]["cosmo_fixed"],
+                                    "maps": [],
+                                    "fun": [],
+                                    "success": [],
+                                }
+                            except KeyError:
+                                continue
+
+    # now go through the different mass cuts for each method
+    for fname in tqdm(fnames, desc="Loading files"):
+        with asdf.open(fname, copy_arrays=True, lazy_load=True) as af:
+            for method in methods_in_files:
+                for mcut in maps[method].keys():
+                    for res in maps[method][mcut].keys():
+                        if "maps" in maps[method][mcut][res].keys():
+                            maps[method][mcut][res]["maps"].append(
+                                af[method][mcut][res]["x"][:]
+                            )
+                            maps[method][mcut][res]["fun"].append(
+                                af[method][mcut][res]["fun"]
+                            )
+                            maps[method][mcut][res]["success"].append(
+                                af[method][mcut][res]["success"]
+                            )
+
+                        if maps_names is not None:
+                            for maps_name in maps_names:
+                                try:
+                                    maps[method][mcut][res][maps_name]["maps"].append(
+                                        af[method][mcut][res][maps_name]["x"][:]
+                                    )
+                                    maps[method][mcut][res][maps_name]["fun"].append(
+                                        af[method][mcut][res][maps_name]["fun"]
+                                    )
+                                    maps[method][mcut][res][maps_name]["success"].append(
+                                        af[method][mcut][res][maps_name]["success"]
+                                    )
+                                except KeyError:
+                                    continue
+
+                        if date_range is not None:
+                            # find dates
+                            for key in maps[method][mcut][res].keys():
+                                try:
+                                    date = datetime.strptime(key, "%Y%m%d_%H:%M")
+                                    if datetime_in_range(date, *date_range):
+                                        maps[method][mcut][res][date]["maps"].append(
+                                            af[method][mcut][res][date]["x"][:]
                                         )
-                                        maps[method][mcut][r][dist]["fun"].append(
-                                            af[method][mcut][r][dist]["fun"]
+                                        maps[method][mcut][res][date]["fun"].append(
+                                            af[method][mcut][res][date]["fun"]
                                         )
-                                        maps[method][mcut][r][dist]["success"].append(
-                                            af[method][mcut][r][dist]["success"]
+                                        maps[method][mcut][res][date]["success"].append(
+                                            af[method][mcut][res][date]["success"]
                                         )
-                                    except Exception as e:
-                                        print(f"{fname} failed with Exception")
-                                        traceback.print_exc()
-                                else:
-                                    try:
-                                        maps[method][mcut][r][dist][dist_kwargs[idx]][
-                                            "maps"
-                                        ].append(
-                                            af[method][mcut][r][dist][dist_kwargs[idx]][
-                                                "x"
-                                            ]
-                                        )
-                                        maps[method][mcut][r][dist][dist_kwargs[idx]][
-                                            "fun"
-                                        ].append(
-                                            af[method][mcut][r][dist][dist_kwargs[idx]][
-                                                "fun"
-                                            ]
-                                        )
-                                        maps[method][mcut][r][dist][dist_kwargs[idx]][
-                                            "success"
-                                        ].append(
-                                            af[method][mcut][r][dist][dist_kwargs[idx]][
-                                                "success"
-                                            ]
-                                        )
-                                    except Exception as e:
-                                        print(f"{fname} failed with Exception")
-                                        traceback.print_exc()
+                                except:
+                                    continue
 
     for method in methods_in_files:
         for mcut in maps[method].keys():
-            for r in res:
-                if r not in maps[method][mcut].keys():
-                    continue
-                if dists is None:
-                    maps[method][mcut][r]["maps"] = np.atleast_2d(
-                        maps[method][mcut][r]["maps"]
-                    )
-                    maps[method][mcut][r]["fun"] = np.atleast_1d(
-                        maps[method][mcut][r]["fun"]
-                    )
-                    maps[method][mcut][r]["success"] = np.atleast_1d(
-                        maps[method][mcut][r]["success"]
-                    )
-                else:
-                    for idx, dist in enumerate(dists):
-                        if dists_kwargs is None:
-                            maps[method][mcut][r][dist]["maps"] = np.atleast_2d(
-                                maps[method][mcut][r][dist]["maps"]
-                            )
-                            maps[method][mcut][r][dist]["fun"] = np.atleast_1d(
-                                maps[method][mcut][r][dist]["fun"]
-                            )
-                            maps[method][mcut][r][dist]["success"] = np.atleast_1d(
-                                maps[method][mcut][r][dist]["success"]
-                            )
-                        else:
-                            maps[method][mcut][r][dist][dist_kwargs[idx]][
-                                "maps"
-                            ] = np.atleast_2d(
-                                maps[method][mcut][r][dist][dist_kwargs[idx]]["maps"]
-                            )
-                            maps[method][mcut][r][dist][dist_kwargs[idx]][
-                                "fun"
-                            ] = np.atleast_1d(
-                                maps[method][mcut][r][dist][dist_kwargs[idx]]["fun"]
-                            )
-                            maps[method][mcut][r][dist][dist_kwargs[idx]][
-                                "success"
-                            ] = np.atleast_1d(
-                                maps[method][mcut][r][dist][dist_kwargs[idx]]["success"]
-                            )
+            for res in maps[method][mcut].keys():
+                for key in maps[method][mcut][res].keys():
+                    if key == "maps":
+                        maps[method][mcut][res]["maps"] = np.atleast_2d(
+                            maps[method][mcut][res]["maps"]
+                        )
+                        maps[method][mcut][res]["fun"] = np.atleast_1d(
+                            maps[method][mcut][res]["fun"]
+                        )
+                        maps[method][mcut][res]["success"] = np.atleast_1d(
+                            maps[method][mcut][res]["success"]
+                        )
 
-    maps_fname_base = mock_sample.gen_fname(
-        A_survey=A_survey, z_min=z_min, z_max=z_max, m200m_min=m200m_min, cosmo=cosmo
+                    if key in maps_names:
+                        maps[method][mcut][res][key]["maps"] = np.atleast_2d(
+                            maps[method][mcut][res][key]["maps"]
+                        )
+                        maps[method][mcut][res][key]["fun"] = np.atleast_1d(
+                            maps[method][mcut][res][key]["fun"]
+                        )
+                        maps[method][mcut][res][key]["success"] = np.atleast_1d(
+                            maps[method][mcut][res][key]["success"]
+                        )
+
+                    try:
+                        if datetime_in_range(key, *date_range):
+                            maps[method][mcut][res][key]["maps"] = np.atleast_2d(
+                                maps[method][mcut][res][key]["maps"]
+                            )
+                            maps[method][mcut][res][key]["fun"] = np.atleast_1d(
+                                maps[method][mcut][res][key]["fun"]
+                            )
+                            maps[method][mcut][res][key]["success"] = np.atleast_1d(
+                                maps[method][mcut][res][key]["success"]
+                            )
+                    except TypeError:
+                        continue
+
+    # maps_fname_base = mock_sample.gen_fname(
+    #     A_survey=A_survey, z_min=z_min, z_max=z_max, m200m_min=m200m_min, cosmo=cosmo
+    # )
+
+    if cosmo_name is None:
+        cosmo_name = ""
+    fname_base = mock_sample.gen_fname(
+        A_survey=maps['A_survey'], z_min=maps['z_min'], z_max=maps['z_max'],
+        m200m_min=maps['log10_m_min'], cosmo=cosmo_name
     )
-
+    fname = f'{fname_base}_{fname_append}.asdf'
     try:
         with asdf.AsdfFile(maps) as af:
-            if fname_append != "":
-                fname_append = f"_{fname_append}"
-                af.write_to(f"{maps_fname_base}_maps{fname_append}.asdf")
+            af.write_to(fname)
     except Exception as e:
         print(f"{fname} failed with Exception")
         traceback.print_exc()

@@ -1,6 +1,8 @@
 """Utility functions for object manipulation that is used throughout
 different modules.
 """
+import datetime
+
 import asdf
 import numpy as np
 import scipy.integrate as intg
@@ -77,6 +79,17 @@ def within_bounds(x, bounds):
     return ~out_of_bounds
 
 
+def datetime_in_range(dt, dt_low, dt_high):
+    """Check if dt is within range [dt_low, dt_high]"""
+    diff_low = dt - dt_low
+    diff_high = dt_high - dt
+    diffs_low = np.array([diff_low.days, diff_low.seconds, diff_low.microseconds])
+    diffs_high = np.array([diff_high.days, diff_high.seconds, diff_high.microseconds])
+    if (diffs_low < 0).any() or (diffs_high < 0).any():
+        return False
+    return True
+
+
 def open_or_create_asdf(fname):
     """Open AsdfFile with fname or create it."""
     try:
@@ -107,6 +120,7 @@ def calc_significance_offset(samples1, samples2, axis=0):
         )
     ], axis=axis)
     return diff / norm
+
 
 def num_to_str(num, unit=None, log=False, precision=3):
     """Convert num to a formatted string with precision, converted to
