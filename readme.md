@@ -21,6 +21,15 @@ pip install .
 This should automatically install all requirements for the package to
 work.
 
+To ensure pyccl works, it might be necessary to install from conda
+```
+conda install -c conda-forge pyccl
+```
+or do a pip install, but ensure that you have a correct CMake installation
+in this case (follow the instructions 
+[here](https://ccl.readthedocs.io/en/latest/source/installation.html#getting-cmake)
+or install CMake using [conda](https://anaconda.org/anaconda/cmake)).
+
 ## Quickstart
 
 If you want to generate data yourself, you should start by running
